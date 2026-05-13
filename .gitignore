@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.conda/
+uv.lock
+
+# Packaging
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+build/
+dist/
+site/
+
+# Test and lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.tox/
+.nox/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+*.bak
+*.log
+logs/
+
+# Local agent/runtime state
+.pico/
+.whale/
+artifacts/
+readme_intro_locked/
+docs/metrics/
+
+# Local Git metadata workaround
+.git-data/
+
+# Local secrets and provider configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Local editor and assistant state
+.vscode/
+.idea/
+.codex/
+.agents/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Packaging metadata
+whale.egg-info/
