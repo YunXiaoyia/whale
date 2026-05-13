@@ -1,54 +1,60 @@
-# Whale V1 Implementation Status
+# Whale V1 实现状态
 
-This file is the handoff ledger for AI agents implementing `docs/architecture/whale-v1-platform-design.md`.
+此文件是实现 `docs/architecture/whale-v1-platform-design.md` 的 AI 代理交接清单。
 
-Every agent must read this file before starting work. After finishing one task, update this file in the same change set: mark the task complete, add evidence, and move `Current Task` to the next unchecked task.
+每个代理在开始工作前都必须先阅读此文件。完成一项任务后，要在同一个变更集中更新此文件：将任务标记为完成、补充证据，并把 `Current Task` 移到下一个未完成任务。
 
-## Operating Rules
+## 操作规则
 
-- Work on exactly one `Current Task` at a time.
-- Do not skip ahead unless the current task is blocked.
-- Keep existing CLI behavior, tests, and `.whale/` artifact compatibility.
-- Do not broaden tool permissions by default.
-- Run the listed validation before marking a task complete.
-- If a task is blocked, mark it `blocked`, write the blocker, and set `Current Task` to the next unblocked task only if doing so is safe.
+- 一次只处理一个 `Current Task`。
+- 除非当前任务被阻塞，否则不要跳到后面的任务。
+- 保持现有 CLI 行为、测试和 `.whale/` 制品兼容性不变。
+- 默认不要扩大工具权限。
+- 在标记任务完成前，运行清单里指定的验证命令。
+- 每完成一个功能开发并测试通过后，提交一次 commit 并推送到远端仓库。
+- 如果任务被阻塞，把状态标成 `blocked`，写明阻塞原因，并且只有在安全的情况下才把 `Current Task` 切到下一个未阻塞任务。
 
-## Current Task
+## 当前任务
 
-- ID: `P1-T2`
-- Title: Add schema notes for run/session artifacts.
-- Source: `whale-v1-platform-design.md`, Phase 1.
-- Status: `in_progress`
-- Target files:
-  - `docs/architecture/agent-harness-v1-overview.md`
-  - optionally `docs/architecture/run-session-schema.md`
-- Done when:
-  - Existing `.whale/sessions/` and `.whale/runs/<run_id>/` artifacts are documented.
-  - `task_state.json`, `trace.jsonl`, `report.json`, checkpoints, and session memory are described.
-  - Compatibility expectations for V0 files without schema versions are stated.
-  - `conda run -n pico python -m pytest -q` passes.
-  - `conda run -n pico ruff check .` passes.
+- ID: `P2-T1`
+- 标题: 为 provider、context、tools、workers、memory 和 stores 引入内部配置 dataclass。
+- 来源: `whale-v1-platform-design.md`，Phase 2。
+- 状态: `in_progress`
+- 目标文件:
+  - `whale/config.py`
+  - `whale/runtime.py`
+  - `whale/context_manager.py`
+  - `whale/tools.py`
+  - `whale/memory.py`
+- 完成标准:
+  - 已添加内部配置 dataclass，覆盖 provider、context、tools、workers、memory 和 stores。
+  - 现有 CLI 默认值和 `WHALE_*` 环境变量行为保持不变。
+  - 现有测试不需要真实 provider 即可验证默认配置行为。
+  - `conda run -n pico python -m pytest -q` 通过。
+  - `conda run -n pico ruff check .` 通过。
 
-## Task Queue
+## 任务队列
 
-| ID | Phase | Status | Title | Validation | Evidence |
+| ID | 阶段 | 状态 | 标题 | 验证 | 证据 |
 | --- | --- | --- | --- | --- | --- |
-| `P1-T1` | Contracts And Documentation | done | Add Whale V1 platform design document. | `pytest`, `ruff` | Added `docs/architecture/whale-v1-platform-design.md`; 105 tests passed; Ruff passed. |
-| `P1-T2` | Contracts And Documentation | in_progress | Add schema notes for run/session artifacts. | `pytest`, `ruff` | Pending. |
-| `P2-T1` | Configuration Objects | todo | Introduce internal config dataclasses for provider, context, tools, workers, memory, and stores. | `pytest`, `ruff` | Pending. |
-| `P2-T2` | Configuration Objects | todo | Wire config defaults into `Whale` construction without changing CLI behavior. | `pytest`, `ruff`, `whale --help` | Pending. |
-| `P3-T1` | Skill Discovery | todo | Add safe `SKILL.md` discovery and `SkillManifest` parsing. | `pytest`, `ruff` | Pending. |
-| `P3-T2` | Skill Discovery | todo | Add deterministic skill selection, prompt injection, metadata, and tests. | `pytest`, `ruff` | Pending. |
-| `P4-T1` | Tool Policy Layer | todo | Extract tool risk and approval decisions into a policy layer. | `pytest`, `ruff` | Pending. |
-| `P4-T2` | Tool Policy Layer | todo | Emit `tool_policy_evaluated` trace events without changing tool results. | `pytest`, `ruff` | Pending. |
-| `P5-T1` | Worker Manager | todo | Wrap `delegate` through a worker manager while preserving read-only child behavior. | `pytest`, `ruff` | Pending. |
-| `P5-T2` | Worker Manager | todo | Add parent/child run linkage and worker trace summary events. | `pytest`, `ruff` | Pending. |
-| `P6-T1` | Run Query And Reports | todo | Add read-only helpers to list runs and load run summaries. | `pytest`, `ruff` | Pending. |
-| `P6-T2` | Run Query And Reports | todo | Extend reports with provider, skills, worker, and memory summaries. | `pytest`, `ruff` | Pending. |
+| `P1-T1` | Contracts And Documentation | done | 添加 Whale V1 平台设计文档。 | `pytest`, `ruff` | 已添加 `docs/architecture/whale-v1-platform-design.md`；105 个测试通过；Ruff 通过。 |
+| `P1-T2` | Contracts And Documentation | done | 为 run/session 制品补充 schema 说明。 | `pytest`, `ruff` | 已新增 `docs/architecture/run-session-schema.md` 并在 `agent-harness-v1-overview.md` 链接；文档覆盖 session、run、trace、report、checkpoint、memory 和 V0 兼容；105 个测试通过；Ruff 通过。 |
+| `P2-T1` | Configuration Objects | in_progress | 为 provider、context、tools、workers、memory 和 stores 引入内部配置 dataclass。 | `pytest`, `ruff` | 待完成。 |
+| `P2-T2` | Configuration Objects | todo | 在不改变 CLI 行为的前提下，将配置默认值接入 `Whale` 构造。 | `pytest`, `ruff`, `whale --help` | 待完成。 |
+| `P2-T3` | Context Governance | todo | 引入上下文预算、裁剪策略、恢复边界和 trace 事件。 | `pytest`, `ruff` | 待完成。 |
+| `P2-T4` | Memory Lifecycle | todo | 明确 memory 的加载、更新、压缩、持久化和报告摘要行为，并补测试。 | `pytest`, `ruff` | 待完成。 |
+| `P3-T1` | Skill Discovery | todo | 添加安全的 `SKILL.md` 发现与 `SkillManifest` 解析。 | `pytest`, `ruff` | 待完成。 |
+| `P3-T2` | Skill Discovery | todo | 添加确定性的 skill 选择、prompt 注入、元数据和测试。 | `pytest`, `ruff` | 待完成。 |
+| `P4-T1` | Tool Policy Layer | todo | 将工具风险和审批决策抽到 policy 层。 | `pytest`, `ruff` | 待完成。 |
+| `P4-T2` | Tool Policy Layer | todo | 在不改变工具结果的前提下发出 `tool_policy_evaluated` trace 事件。 | `pytest`, `ruff` | 待完成。 |
+| `P5-T1` | Worker Manager | todo | 通过 worker manager 包装 `delegate`，同时保持子代理只读行为。 | `pytest`, `ruff` | 待完成。 |
+| `P5-T2` | Worker Manager | todo | 增加父子 run 关联和 worker trace 汇总事件。 | `pytest`, `ruff` | 待完成。 |
+| `P6-T1` | Run Query And Reports | todo | 增加只读辅助方法以列出 runs 并加载 run 摘要。 | `pytest`, `ruff` | 待完成。 |
+| `P6-T2` | Run Query And Reports | todo | 扩展报告，加入 provider、skills、worker 和 memory 摘要。 | `pytest`, `ruff` | 待完成。 |
 
-## Completion Update Template
+## 完成更新模板
 
-When completing a task, update:
+完成某项任务时，更新：
 
 ```text
 ## Current Task
@@ -62,13 +68,12 @@ When completing a task, update:
   - <acceptance checks>
 ```
 
-Then update the finished row in `Task Queue`:
+然后更新 `Task Queue` 中已完成的行：
 
 ```text
-| `<task id>` | <phase> | done | <title> | `pytest`, `ruff` | <short evidence and key files> |
+| `<task id>` | <phase> | done | <title> | `pytest`, `ruff` | <简短证据和关键文件> |
 ```
 
-## Blocker Log
+## 阻塞日志
 
-No active blockers.
-
+当前没有活动阻塞。
