@@ -21,6 +21,7 @@ from .context_manager import ContextManager
 from .run_store import RunStore
 from . import skills as skilllib
 from .task_state import TaskState
+from .tool_policy import ToolPolicy
 from . import tools as toolkit
 from .workspace import IGNORED_PATH_NAMES, MAX_HISTORY, WorkspaceContext, clip, now
 
@@ -152,6 +153,7 @@ class Whale:
         self.last_durable_rejections = []
         self.last_durable_superseded = []
         self._last_tool_result_metadata = {}
+        self.tool_policy = ToolPolicy()
         self._last_prefix_refresh = {
             "workspace_changed": False,
             "prefix_changed": False,
@@ -1075,61 +1077,10 @@ class Whale:
         # 工具是否存在 -> 参数是否合法 -> 是否重复调用 -> 是否通过审批
         # -> 真正执行 -> 更新记忆。
         tool = self.tools.get(name)
-        if tool is None:
-            self._last_tool_result_metadata = {
-                "tool_status": "rejected",
-                "tool_error_code": "unknown_tool",
-                "security_event_type": "",
-                "risk_level": "high",
-                "read_only": False,
-                "affected_paths": [],
-                "workspace_changed": False,
-                "diff_summary": [],
-            }
-            return f"error: unknown tool '{name}'"
-        try:
-            self.validate_tool(name, args)
-        except Exception as exc:
-            example = self.tool_example(name)
-            message = f"error: invalid arguments for {name}: {exc}"
-            if example:
-                message += f"\nexample: {example}"
-            security_event_type = "path_escape" if "path escapes workspace" in str(exc) else ""
-            self._last_tool_result_metadata = {
-                "tool_status": "rejected",
-                "tool_error_code": "invalid_arguments",
-                "security_event_type": security_event_type,
-                "risk_level": "high" if tool["risky"] else "low",
-                "read_only": not tool["risky"],
-                "affected_paths": [],
-                "workspace_changed": False,
-                "diff_summary": [],
-            }
-            return message
-        if self.repeated_tool_call(name, args):
-            self._last_tool_result_metadata = {
-                "tool_status": "rejected",
-                "tool_error_code": "repeated_identical_call",
-                "security_event_type": "",
-                "risk_level": "high" if tool["risky"] else "low",
-                "read_only": not tool["risky"],
-                "affected_paths": [],
-                "workspace_changed": False,
-                "diff_summary": [],
-            }
-            return f"error: repeated identical tool call for {name}; choose a different tool or return a final answer"
-        if tool["risky"] and not self.approve(name, args):
-            self._last_tool_result_metadata = {
-                "tool_status": "rejected",
-                "tool_error_code": "approval_denied",
-                "security_event_type": "read_only_block" if self.read_only else "approval_denied",
-                "risk_level": "high",
-                "read_only": False,
-                "affected_paths": [],
-                "workspace_changed": False,
-                "diff_summary": [],
-            }
-            return f"error: approval denied for {name}"
+        decision = self.tool_policy.evaluate(self, name, args)
+        if not decision.allowed:
+            self._last_tool_result_metadata = decision.metadata()
+            return decision.message
         before_snapshot = self.capture_workspace_snapshot() if tool["risky"] else {}
         after_snapshot = before_snapshot
         try:

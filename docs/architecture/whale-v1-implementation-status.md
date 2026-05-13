@@ -16,20 +16,19 @@
 
 ## 当前任务
 
-- ID: `P4-T1`
-- 标题: 将工具风险和审批决策抽到 policy 层。
+- ID: `P4-T2`
+- 标题: 在不改变工具结果的前提下发出 `tool_policy_evaluated` trace 事件。
 - 来源: `whale-v1-platform-design.md`，Phase 4。
 - 状态: `in_progress`
 - 目标文件:
   - `whale/runtime.py`
-  - `whale/tools.py`
-  - 可选 `whale/tool_policy.py`
+  - `whale/tool_policy.py`
   - `tests/test_whale.py`
   - `tests/test_safety_invariants.py`
 - 完成标准:
-  - 工具 risk、read-only、approval 和 repeat-call 决策从 `run_tool()` 抽到独立 policy 层。
-  - 现有工具结果和审批行为保持不变。
-  - 只读子代理仍不能运行危险工具。
+  - 每次工具调用在执行前写入 `tool_policy_evaluated` trace。
+  - trace payload 包含工具名、risk、approval 决策、security event、read-only 和路径摘要。
+  - 现有 `tool_executed` 结果和用户可见工具返回保持不变。
   - `conda run -n pico python -m pytest -q` 通过。
   - `conda run -n pico ruff check .` 通过。
 
@@ -45,8 +44,8 @@
 | `P2-T4` | Memory Lifecycle | done | 明确 memory 的加载、更新、压缩、持久化和报告摘要行为，并补测试。 | `pytest`, `ruff` | 已新增 `memory_summary` 并写入 run report，覆盖 working/file summaries/episodic/process/durable/stale invalidation/promotion 计数；`pytest` 113 个测试通过；Ruff 通过。 |
 | `P3-T1` | Skill Discovery | done | 添加安全的 `SKILL.md` 发现与 `SkillManifest` 解析。 | `pytest`, `ruff` | 已新增 `whale/skills.py`、`SkillManifest`、三层 discovery roots、front matter 解析、名称校验和裁剪测试；`pytest` 118 个测试通过；Ruff 通过。 |
 | `P3-T2` | Skill Discovery | done | 添加确定性的 skill 选择、prompt 注入、元数据和测试。 | `pytest`, `ruff` | 已实现 `$skill` 显式提及、trigger/default 选择、prompt 注入、metadata 和 `skill_selected` trace；`pytest` 122 个测试通过；Ruff 通过。 |
-| `P4-T1` | Tool Policy Layer | in_progress | 将工具风险和审批决策抽到 policy 层。 | `pytest`, `ruff` | 待完成。 |
-| `P4-T2` | Tool Policy Layer | todo | 在不改变工具结果的前提下发出 `tool_policy_evaluated` trace 事件。 | `pytest`, `ruff` | 待完成。 |
+| `P4-T1` | Tool Policy Layer | done | 将工具风险和审批决策抽到 policy 层。 | `pytest`, `ruff` | 已新增 `whale/tool_policy.py` 和 `ToolPolicyDecision`，将未知工具、参数校验、重复调用和审批拒绝从 `run_tool()` 抽离；`pytest` 126 个测试通过；Ruff 通过。 |
+| `P4-T2` | Tool Policy Layer | in_progress | 在不改变工具结果的前提下发出 `tool_policy_evaluated` trace 事件。 | `pytest`, `ruff` | 待完成。 |
 | `P5-T1` | Worker Manager | todo | 通过 worker manager 包装 `delegate`，同时保持子代理只读行为。 | `pytest`, `ruff` | 待完成。 |
 | `P5-T2` | Worker Manager | todo | 增加父子 run 关联和 worker trace 汇总事件。 | `pytest`, `ruff` | 待完成。 |
 | `P6-T1` | Run Query And Reports | todo | 增加只读辅助方法以列出 runs 并加载 run 摘要。 | `pytest`, `ruff` | 待完成。 |
