@@ -171,11 +171,11 @@ def test_bound_tool_methods_delegate_into_tools_module(tmp_path):
     fake_run.assert_called_once()
     assert agent.tool_run_shell.__func__.__module__ == "whale.runtime"
 
-    with patch("whale.tools.tool_delegate", return_value="toolkit-delegate") as fake_delegate:
+    with patch.object(agent.worker_manager, "delegate", return_value="toolkit-delegate") as fake_delegate:
         delegate_result = agent.tool_delegate({"task": "inspect README.md", "max_steps": 2})
 
     assert delegate_result == "toolkit-delegate"
-    fake_delegate.assert_called_once()
+    fake_delegate.assert_called_once_with({"task": "inspect README.md", "max_steps": 2})
 
 
 def test_delegate_depth_limit_is_enforced(tmp_path):
@@ -208,6 +208,12 @@ def test_delegate_child_is_read_only(tmp_path):
     tool_events = [item for item in agent.session["history"] if item["role"] == "tool"]
     assert tool_events[0]["name"] == "delegate"
     assert "delegate_result" in tool_events[0]["content"]
+    worker_spec = agent.worker_manager.last_worker_spec
+    assert worker_spec is not None
+    assert worker_spec.read_only is True
+    assert worker_spec.depth == 1
+    assert worker_spec.max_depth == agent.max_depth
+    assert "write_file" not in worker_spec.allowed_tools
 
 
 def test_configured_secret_env_names_are_redacted_in_trace_and_report(tmp_path):

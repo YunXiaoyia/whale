@@ -223,6 +223,12 @@ def test_delegate_uses_child_agent(tmp_path):
     tool_events = [item for item in agent.session["history"] if item["role"] == "tool"]
     assert tool_events[0]["name"] == "delegate"
     assert "delegate_result" in tool_events[0]["content"]
+    worker_spec = agent.worker_manager.last_worker_spec
+    assert worker_spec is not None
+    assert worker_spec.parent_run_id == agent.current_task_state.run_id
+    assert worker_spec.task == "inspect README"
+    assert worker_spec.max_steps == 2
+    assert worker_spec.read_only is True
 
 
 def test_patch_file_replaces_exact_match(tmp_path):

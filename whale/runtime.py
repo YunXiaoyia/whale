@@ -23,6 +23,7 @@ from . import skills as skilllib
 from .task_state import TaskState
 from .tool_policy import ToolPolicy
 from . import tools as toolkit
+from .workers import WorkerManager
 from .workspace import IGNORED_PATH_NAMES, MAX_HISTORY, WorkspaceContext, clip, now
 
 SENSITIVE_ENV_NAME_MARKERS = ("API_KEY", "TOKEN", "SECRET", "PASSWORD")
@@ -139,6 +140,7 @@ class Whale:
             "selected_names": [],
             "selected_sources": [],
         }
+        self.worker_manager = WorkerManager(self, config=self.config.workers)
         self.tools = self.build_tools()
         self.prefix_state = self.build_prefix()
         self.prefix = self.prefix_state.text
@@ -1199,8 +1201,7 @@ class Whale:
         """把通用工具校验和 runtime 级额外约束串起来。"""
         toolkit.validate_tool(self, name, args)
         if name == "delegate":
-            if self.depth >= self.max_depth:
-                raise ValueError("delegate depth exceeded")
+            self.worker_manager.validate_delegate(args)
 
     def tool_list_files(self, args):
         return toolkit.tool_list_files(self, args)
@@ -1221,7 +1222,7 @@ class Whale:
         return toolkit.tool_patch_file(self, args)
 
     def tool_delegate(self, args):
-        return toolkit.tool_delegate(self, args)
+        return self.worker_manager.delegate(args)
 
     def approve(self, name, args):
         if self.read_only:

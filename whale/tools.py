@@ -10,7 +10,7 @@ import textwrap
 from functools import partial
 
 from .config import DEFAULT_TOOL_CONFIG, DEFAULT_WORKER_CONFIG
-from .workspace import IGNORED_PATH_NAMES, clip
+from .workspace import IGNORED_PATH_NAMES
 
 BASE_TOOL_SPECS = {
     "list_files": {
@@ -71,7 +71,7 @@ def build_tool_registry(agent):
     }
     # 子 agent 是刻意做成受限能力的：一旦深度耗尽，
     # 就连 delegate 这个工具都不再暴露给模型。
-    if agent.depth < agent.max_depth:
+    if agent.worker_manager.can_delegate():
         tools["delegate"] = {**DELEGATE_TOOL_SPEC, "run": partial(tool_delegate, agent)}
     return tools
 
@@ -264,33 +264,7 @@ def tool_patch_file(agent, args):
 
 
 def tool_delegate(agent, args):
-    if agent.depth >= agent.max_depth:
-        raise ValueError("delegate depth exceeded")
-    task = str(args.get("task", "")).strip()
-    if not task:
-        raise ValueError("task must not be empty")
-
-    from .runtime import Whale
-
-    child = Whale(
-        model_client=agent.model_client,
-        workspace=agent.workspace,
-        session_store=agent.session_store,
-        run_store=agent.run_store,
-        approval_policy="never",
-        max_steps=int(args.get("max_steps", DEFAULT_WORKER_CONFIG.default_max_steps)),
-        max_new_tokens=agent.max_new_tokens,
-        depth=agent.depth + 1,
-        max_depth=agent.max_depth,
-        read_only=True,
-        secret_env_names=agent.secret_env_names,
-        shell_env_allowlist=agent.shell_env_allowlist,
-    )
-    # 委派的目标是“调查”，不是“放权执行”。
-    # 子 agent 以只读方式运行、步数更少，最后只把结论文本返回给父 agent。
-    child.session["memory"]["task"] = task
-    child.session["memory"]["notes"] = [clip(agent.history_text(), 300)]
-    return "delegate_result:\n" + child.ask(task)
+    return agent.tool_delegate(args)
 
 
 _TOOL_RUNNERS = {
