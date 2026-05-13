@@ -64,3 +64,55 @@ def test_run_store_tolerates_missing_final_report(tmp_path):
 
     assert store.trace_path(state.run_id).exists()
     assert not store.report_path(state.run_id).exists()
+
+
+def test_run_store_lists_runs_without_requiring_reports(tmp_path):
+    store = RunStore(tmp_path / ".whale" / "runs")
+    older = TaskState.create(run_id="run_20260407-100000-aaaaaa", task_id="task_older", user_request="Older run.")
+    newer = TaskState.create(run_id="run_20260407-100001-bbbbbb", task_id="task_newer", user_request="Newer run.")
+    newer.record_tool("read_file")
+    newer.finish_success("Done.")
+
+    store.start_run(older)
+    store.start_run(newer)
+    store.append_trace(newer, {"event": "run_started"})
+    store.write_task_state(newer)
+    store.write_report(newer, {"task_state": newer.to_dict(), "stop_reason": newer.stop_reason})
+
+    summaries = store.list_runs()
+
+    assert [item["run_id"] for item in summaries] == [newer.run_id, older.run_id]
+    assert summaries[0]["has_report"] is True
+    assert summaries[0]["has_trace"] is True
+    assert summaries[0]["tool_steps"] == 1
+    assert summaries[0]["stop_reason"] == STOP_REASON_FINAL_ANSWER_RETURNED
+    assert summaries[1]["has_report"] is False
+    assert summaries[1]["user_request"] == "Older run."
+
+
+def test_run_store_loads_worker_run_summary_links(tmp_path):
+    store = RunStore(tmp_path / ".whale" / "runs")
+    parent = TaskState.create(run_id="run_parent", task_id="task_parent", user_request="Parent.")
+    child = TaskState.create(run_id="run_child", task_id="task_child", user_request="Child.")
+    child.parent_run_id = parent.run_id
+    child.worker_id = "worker_001"
+    parent.record_worker(
+        {
+            "worker_id": child.worker_id,
+            "run_id": child.run_id,
+            "parent_run_id": parent.run_id,
+            "status": "completed",
+        }
+    )
+
+    store.start_run(parent)
+    store.write_task_state(parent)
+    store.start_run(child)
+    store.write_task_state(child)
+
+    parent_summary = store.load_run_summary(parent.run_id)
+    child_summary = store.load_run_summary(child.run_id)
+
+    assert parent_summary["workers"][0]["run_id"] == child.run_id
+    assert child_summary["parent_run_id"] == parent.run_id
+    assert child_summary["worker_id"] == "worker_001"

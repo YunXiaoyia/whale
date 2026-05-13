@@ -256,6 +256,13 @@ def test_delegate_uses_child_agent(tmp_path):
     assert worker_finished["status"] == "completed"
     assert worker_finished["final_answer"] == "Child result."
 
+    summaries = agent.run_store.list_runs()
+    parent_summary = next(item for item in summaries if item["run_id"] == agent.current_task_state.run_id)
+    child_summary = next(item for item in summaries if item["run_id"] == worker_spec.run_id)
+    assert parent_summary["workers"][0]["run_id"] == worker_spec.run_id
+    assert child_summary["parent_run_id"] == agent.current_task_state.run_id
+    assert child_summary["worker_id"] == worker_spec.worker_id
+
 
 def test_patch_file_replaces_exact_match(tmp_path):
     file_path = tmp_path / "sample.txt"

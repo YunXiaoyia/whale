@@ -68,6 +68,55 @@ class RunStore:
     def load_report(self, task_id):
         return json.loads(self.report_path(task_id).read_text(encoding="utf-8"))
 
+    def list_runs(self, limit=None):
+        if not self.root.exists():
+            return []
+        if limit is not None and int(limit) <= 0:
+            return []
+
+        summaries = []
+        run_dirs = [path for path in self.root.iterdir() if path.is_dir()]
+        for run_dir in sorted(run_dirs, key=lambda path: path.name, reverse=True):
+            if not (run_dir / "task_state.json").exists() and not (run_dir / "report.json").exists():
+                continue
+            summaries.append(self.load_run_summary(run_dir.name))
+            if limit is not None and len(summaries) >= int(limit):
+                break
+        return summaries
+
+    def load_run_summary(self, run_id):
+        run_id = _run_id(run_id)
+        task_state = self._load_json_if_exists(self.task_state_path(run_id))
+        report = self._load_json_if_exists(self.report_path(run_id))
+        state = {}
+        if isinstance(report, dict) and isinstance(report.get("task_state"), dict):
+            state = report["task_state"]
+        elif isinstance(task_state, dict):
+            state = task_state
+        report_source = report if isinstance(report, dict) else {}
+
+        workers = state.get("workers", [])
+        if not isinstance(workers, list):
+            workers = []
+        return {
+            "run_id": str(report_source.get("run_id") or state.get("run_id") or run_id),
+            "task_id": str(report_source.get("task_id") or state.get("task_id", "")),
+            "user_request": str(state.get("user_request", "")),
+            "status": str(report_source.get("status") or state.get("status", "")),
+            "stop_reason": str(report_source.get("stop_reason") or state.get("stop_reason", "")),
+            "final_answer": str(report_source.get("final_answer") or state.get("final_answer", "")),
+            "tool_steps": int(report_source.get("tool_steps", state.get("tool_steps", 0)) or 0),
+            "attempts": int(report_source.get("attempts", state.get("attempts", 0)) or 0),
+            "checkpoint_id": str(report_source.get("checkpoint_id") or state.get("checkpoint_id", "")),
+            "resume_status": str(report_source.get("resume_status") or state.get("resume_status", "")),
+            "parent_run_id": str(state.get("parent_run_id", "")),
+            "worker_id": str(state.get("worker_id", "")),
+            "workers": workers,
+            "has_task_state": task_state is not None,
+            "has_report": report is not None,
+            "has_trace": self.trace_path(run_id).exists(),
+        }
+
     def _write_json_atomic(self, path, payload):
         # 原子写：先写临时文件，再 replace。
         # 这样即使中途异常，也不容易留下半截 JSON。
@@ -83,3 +132,9 @@ class RunStore:
             handle.write("\n")
             temp_name = handle.name
         Path(temp_name).replace(path)
+
+    @staticmethod
+    def _load_json_if_exists(path):
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
