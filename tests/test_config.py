@@ -97,3 +97,53 @@ def test_cli_provider_defaults_still_honor_environment_priority(tmp_path):
     assert agent.model_client.model == "env-model"
     assert agent.model_client.base_url == "https://example.test/v1"
     assert agent.model_client.kwargs["api_key"] == "sk-test"
+
+
+def test_cli_provider_profiles_preserve_legacy_env_and_cli_override_priority(tmp_path):
+    class DummyModelClient:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+            self.model = kwargs.get("model", "")
+            self.base_url = kwargs.get("base_url", "")
+            self.supports_prompt_cache = False
+
+        def complete(self, prompt, max_new_tokens):
+            raise AssertionError("model should not be invoked")
+
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+    with patch.dict(
+        os.environ,
+        {
+            "ANTHROPIC_MODEL": "legacy-model",
+            "ANTHROPIC_API_BASE": "https://legacy.example/v1",
+            "ANTHROPIC_API_KEY": "sk-legacy",
+        },
+        clear=True,
+    ), patch("whale.cli.AnthropicCompatibleModelClient", DummyModelClient):
+        args = whale_cli.build_arg_parser().parse_args(
+            [
+                "--cwd",
+                str(tmp_path),
+                "--provider",
+                "anthropic",
+                "--model",
+                "cli-model",
+                "--base-url",
+                "https://cli.example/v1",
+            ]
+        )
+        agent = whale_cli.build_agent(args)
+
+    assert agent.model_client.model == "cli-model"
+    assert agent.model_client.base_url == "https://cli.example/v1"
+    assert agent.model_client.kwargs["api_key"] == "sk-legacy"
+
+
+def test_whale_help_remains_available():
+    parser = whale_cli.build_arg_parser()
+    help_text = parser.format_help()
+
+    assert "--provider" in help_text
+    assert "--approval" in help_text
+    assert "--max-steps" in help_text

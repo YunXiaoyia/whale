@@ -11,7 +11,7 @@ import shutil
 import sys
 import textwrap
 
-from .config import load_project_env, provider_env
+from .config import DEFAULT_PROVIDER_PROFILES, DEFAULT_WHALE_CONFIG, load_project_env, provider_env
 from .models import AnthropicCompatibleModelClient, OllamaModelClient, OpenAICompatibleModelClient
 from .runtime import Whale, SessionStore
 from .workspace import WorkspaceContext, middle
@@ -52,14 +52,14 @@ HELP_DETAILS = textwrap.dedent(
 ).strip()
 
 
-DEFAULT_OLLAMA_MODEL = "qwen3.5:4b"
-DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
-DEFAULT_OPENAI_MODEL = "gpt-5.4"
-DEFAULT_OPENAI_BASE_URL = "https://www.right.codes/codex/v1"
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
-DEFAULT_ANTHROPIC_BASE_URL = "https://www.right.codes/claude/v1"
-DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
-DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com/anthropic"
+DEFAULT_OLLAMA_MODEL = DEFAULT_PROVIDER_PROFILES["ollama"].default_model
+DEFAULT_OLLAMA_HOST = DEFAULT_PROVIDER_PROFILES["ollama"].default_host
+DEFAULT_OPENAI_MODEL = DEFAULT_PROVIDER_PROFILES["openai"].default_model
+DEFAULT_OPENAI_BASE_URL = DEFAULT_PROVIDER_PROFILES["openai"].default_base_url
+DEFAULT_ANTHROPIC_MODEL = DEFAULT_PROVIDER_PROFILES["anthropic"].default_model
+DEFAULT_ANTHROPIC_BASE_URL = DEFAULT_PROVIDER_PROFILES["anthropic"].default_base_url
+DEFAULT_DEEPSEEK_MODEL = DEFAULT_PROVIDER_PROFILES["deepseek"].default_model
+DEFAULT_DEEPSEEK_BASE_URL = DEFAULT_PROVIDER_PROFILES["deepseek"].default_base_url
 LEGACY_SECRET_ENV_NAMES_VAR = "WHALE_LEGACY_SECRET_ENV_NAMES"
 SECRET_ENV_NAMES_VAR = "WHALE_SECRET_ENV_NAMES"
 
@@ -72,22 +72,12 @@ def _effective_model(args, provider):
     explicit_model = getattr(args, "model", None)
     if explicit_model:
         return explicit_model
-    if provider == "openai":
-        model = provider_env("WHALE_OPENAI_MODEL", ("OPENAI_MODEL",))
+    profile = DEFAULT_PROVIDER_PROFILES[provider]
+    if profile.model_env:
+        model = provider_env(profile.model_env, profile.model_legacy_env)
         if model:
             return model
-        return DEFAULT_OPENAI_MODEL
-    if provider == "anthropic":
-        model = provider_env("WHALE_ANTHROPIC_MODEL", ("ANTHROPIC_MODEL",))
-        if model:
-            return model
-        return DEFAULT_ANTHROPIC_MODEL
-    if provider == "deepseek":
-        model = provider_env("WHALE_DEEPSEEK_MODEL", ("DEEPSEEK_MODEL",))
-        if model:
-            return model
-        return DEFAULT_DEEPSEEK_MODEL
-    return DEFAULT_OLLAMA_MODEL
+    return profile.default_model
 
 
 def _configured_secret_names(args):
@@ -107,12 +97,17 @@ def _configured_secret_names(args):
 
 def _build_model_client(args):
     provider = getattr(args, "provider", "openai")
+    profile = DEFAULT_PROVIDER_PROFILES[provider]
     # CLI 只负责把 provider 选择翻译成具体 client。
     # 真正的提示词格式、缓存支持、HTTP 协议差异，都封装在 models.py 里。
     if provider == "openai":
         model = _effective_model(args, provider)
-        base_url = getattr(args, "base_url", None) or provider_env("WHALE_OPENAI_API_BASE", ("OPENAI_API_BASE",), DEFAULT_OPENAI_BASE_URL)
-        api_key = provider_env("WHALE_OPENAI_API_KEY", ("OPENAI_API_KEY",))
+        base_url = getattr(args, "base_url", None) or provider_env(
+            profile.base_url_env,
+            profile.base_url_legacy_env,
+            profile.default_base_url,
+        )
+        api_key = provider_env(profile.api_key_env, profile.api_key_legacy_env)
         return OpenAICompatibleModelClient(
             model=model,
             base_url=base_url,
@@ -122,11 +117,12 @@ def _build_model_client(args):
         )
     if provider == "anthropic":
         model = _effective_model(args, provider)
-        base_url = getattr(args, "base_url", None) or provider_env("WHALE_ANTHROPIC_API_BASE", ("ANTHROPIC_API_BASE",), DEFAULT_ANTHROPIC_BASE_URL)
-        api_key = provider_env(
-            "WHALE_ANTHROPIC_API_KEY",
-            ("ANTHROPIC_API_KEY", "WHALE_RIGHT_CODES_API_KEY", "RIGHT_CODES_API_KEY", "WHALE_OPENAI_API_KEY", "OPENAI_API_KEY"),
+        base_url = getattr(args, "base_url", None) or provider_env(
+            profile.base_url_env,
+            profile.base_url_legacy_env,
+            profile.default_base_url,
         )
+        api_key = provider_env(profile.api_key_env, profile.api_key_legacy_env)
         return AnthropicCompatibleModelClient(
             model=model,
             base_url=base_url,
@@ -136,8 +132,12 @@ def _build_model_client(args):
         )
     if provider == "deepseek":
         model = _effective_model(args, provider)
-        base_url = getattr(args, "base_url", None) or provider_env("WHALE_DEEPSEEK_API_BASE", ("DEEPSEEK_API_BASE",), DEFAULT_DEEPSEEK_BASE_URL)
-        api_key = provider_env("WHALE_DEEPSEEK_API_KEY", ("DEEPSEEK_API_KEY",))
+        base_url = getattr(args, "base_url", None) or provider_env(
+            profile.base_url_env,
+            profile.base_url_legacy_env,
+            profile.default_base_url,
+        )
+        api_key = provider_env(profile.api_key_env, profile.api_key_legacy_env)
         return AnthropicCompatibleModelClient(
             model=model,
             base_url=base_url,
@@ -147,7 +147,7 @@ def _build_model_client(args):
         )
 
     model = _effective_model(args, provider)
-    host = getattr(args, "host", DEFAULT_OLLAMA_HOST)
+    host = getattr(args, "host", profile.default_host)
     return OllamaModelClient(
         model=model,
         host=host,
@@ -223,7 +223,7 @@ def build_agent(args):
     workspace = WorkspaceContext.build(args.cwd)
     load_project_env(workspace.repo_root)
     configured_secret_names = _configured_secret_names(args)
-    store = SessionStore(workspace.repo_root + "/.whale/sessions")
+    store = SessionStore(DEFAULT_WHALE_CONFIG.stores.session_root(workspace.repo_root))
     model = _build_model_client(args)
     session_id = args.resume
     if session_id == "latest":
