@@ -133,6 +133,15 @@ class MemoryConfig:
 
 
 @dataclass(frozen=True)
+class SkillConfig:
+    enabled: bool = True
+    filename: str = "SKILL.md"
+    instruction_char_limit: int = 4000
+    max_discovered: int = 64
+    name_pattern: str = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+
+
+@dataclass(frozen=True)
 class StoreConfig:
     whale_dir: str = ".whale"
     sessions_dir: str = "sessions"
@@ -216,6 +225,7 @@ class WhaleConfig:
     tools: ToolConfig = field(default_factory=ToolConfig)
     workers: WorkerConfig = field(default_factory=WorkerConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
+    skills: SkillConfig = field(default_factory=SkillConfig)
     stores: StoreConfig = field(default_factory=StoreConfig)
 
 
@@ -225,6 +235,7 @@ DEFAULT_CONTEXT_CONFIG = ContextConfig()
 DEFAULT_TOOL_CONFIG = ToolConfig()
 DEFAULT_WORKER_CONFIG = WorkerConfig()
 DEFAULT_MEMORY_CONFIG = MemoryConfig()
+DEFAULT_SKILL_CONFIG = SkillConfig()
 DEFAULT_STORE_CONFIG = StoreConfig()
 DEFAULT_WHALE_CONFIG = WhaleConfig()
 
