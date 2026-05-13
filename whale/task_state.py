@@ -4,7 +4,7 @@
 这个对象会被不断写入 task_state.json，供运行中观察和运行后复盘。
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import uuid4
 
@@ -37,6 +37,9 @@ class TaskState:
     final_answer: str = ""
     checkpoint_id: str = ""
     resume_status: str = ""
+    parent_run_id: str = ""
+    worker_id: str = ""
+    workers: list = field(default_factory=list)
 
     @classmethod
     def create(cls, task_id, user_request, run_id=""):
@@ -58,6 +61,9 @@ class TaskState:
             final_answer=str(data.get("final_answer", "")),
             checkpoint_id=str(data.get("checkpoint_id", "")),
             resume_status=str(data.get("resume_status", "")),
+            parent_run_id=str(data.get("parent_run_id", "")),
+            worker_id=str(data.get("worker_id", "")),
+            workers=list(data.get("workers", [])) if isinstance(data.get("workers", []), list) else [],
         )
 
     def record_attempt(self):
@@ -69,6 +75,21 @@ class TaskState:
         # tool_steps 只统计真正进入执行阶段的工具调用次数。
         self.tool_steps += 1
         self.last_tool = str(name or "")
+        return self
+
+    def record_worker(self, worker):
+        worker_id = str((worker or {}).get("worker_id", ""))
+        workers = []
+        replaced = False
+        for item in self.workers:
+            if worker_id and str(item.get("worker_id", "")) == worker_id:
+                workers.append(dict(worker))
+                replaced = True
+            else:
+                workers.append(item)
+        if not replaced:
+            workers.append(dict(worker or {}))
+        self.workers = workers
         return self
 
     def stop(self, stop_reason, status=STATUS_STOPPED, final_answer=""):
@@ -107,4 +128,7 @@ class TaskState:
             "final_answer": self.final_answer,
             "checkpoint_id": self.checkpoint_id,
             "resume_status": self.resume_status,
+            "parent_run_id": self.parent_run_id,
+            "worker_id": self.worker_id,
+            "workers": list(self.workers),
         }

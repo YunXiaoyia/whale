@@ -791,7 +791,7 @@ class Whale:
         self.last_durable_superseded = superseded
         return promoted, rejections, superseded
 
-    def ask(self, user_message):
+    def ask(self, user_message, run_id=None, parent_run_id="", worker_id=""):
         """执行一次完整的 agent 回合，直到产出最终答案或命中停止条件。
 
         为什么存在：
@@ -815,7 +815,9 @@ class Whale:
         self.memory.set_task_summary(user_message)
         self.record({"role": "user", "content": user_message, "created_at": now()})
 
-        task_state = TaskState.create(run_id=self.new_run_id(), task_id=self.new_task_id(), user_request=user_message)
+        task_state = TaskState.create(run_id=run_id or self.new_run_id(), task_id=self.new_task_id(), user_request=user_message)
+        task_state.parent_run_id = str(parent_run_id or "")
+        task_state.worker_id = str(worker_id or "")
         task_state.resume_status = self.resume_state.get("status", CHECKPOINT_NONE_STATUS)
         self.current_task_state = task_state
         self.current_run_dir = self.run_store.start_run(task_state)
@@ -825,6 +827,8 @@ class Whale:
             {
                 "task_id": task_state.task_id,
                 "user_request": clip(user_message, 300),
+                "parent_run_id": task_state.parent_run_id,
+                "worker_id": task_state.worker_id,
             },
         )
 

@@ -73,3 +73,19 @@ def test_task_state_snapshot_keeps_checkpoint_reference_without_body():
     assert snapshot["resume_status"] == "full-valid"
     assert "current_goal" not in snapshot
     assert "next_step" not in snapshot
+
+
+def test_task_state_records_worker_links():
+    state = TaskState.create(run_id="run_007", task_id="task_007", user_request="Delegate.")
+    state.parent_run_id = "run_parent"
+    state.worker_id = "worker_001"
+    state.record_worker({"worker_id": "worker_002", "run_id": "run_child", "status": "running"})
+    state.record_worker({"worker_id": "worker_002", "run_id": "run_child", "status": "completed"})
+
+    snapshot = state.to_dict()
+    restored = TaskState.from_dict(snapshot)
+
+    assert snapshot["parent_run_id"] == "run_parent"
+    assert snapshot["worker_id"] == "worker_001"
+    assert snapshot["workers"] == [{"worker_id": "worker_002", "run_id": "run_child", "status": "completed"}]
+    assert restored.workers == snapshot["workers"]

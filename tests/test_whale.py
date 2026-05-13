@@ -229,6 +229,32 @@ def test_delegate_uses_child_agent(tmp_path):
     assert worker_spec.task == "inspect README"
     assert worker_spec.max_steps == 2
     assert worker_spec.read_only is True
+    assert worker_spec.run_id
+
+    parent_state = agent.run_store.load_task_state(agent.current_task_state.run_id)
+    worker_record = parent_state["workers"][0]
+    assert worker_record["worker_id"] == worker_spec.worker_id
+    assert worker_record["run_id"] == worker_spec.run_id
+    assert worker_record["parent_run_id"] == agent.current_task_state.run_id
+    assert worker_record["status"] == "completed"
+    assert worker_record["final_answer"] == "Child result."
+
+    child_state = agent.run_store.load_task_state(worker_spec.run_id)
+    assert child_state["parent_run_id"] == agent.current_task_state.run_id
+    assert child_state["worker_id"] == worker_spec.worker_id
+
+    trace_events = [
+        json.loads(line)
+        for line in agent.run_store.trace_path(agent.current_task_state).read_text(encoding="utf-8").splitlines()
+    ]
+    event_names = [event["event"] for event in trace_events]
+    assert event_names.index("worker_started") < event_names.index("worker_finished")
+    worker_started = [event for event in trace_events if event["event"] == "worker_started"][-1]
+    worker_finished = [event for event in trace_events if event["event"] == "worker_finished"][-1]
+    assert worker_started["run_id"] == worker_spec.run_id
+    assert worker_finished["run_id"] == worker_spec.run_id
+    assert worker_finished["status"] == "completed"
+    assert worker_finished["final_answer"] == "Child result."
 
 
 def test_patch_file_replaces_exact_match(tmp_path):

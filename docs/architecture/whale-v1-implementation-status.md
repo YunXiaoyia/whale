@@ -16,19 +16,18 @@
 
 ## 当前任务
 
-- ID: `P5-T2`
-- 标题: 增加父子 run 关联和 worker trace 汇总事件。
-- 来源: `whale-v1-platform-design.md`，Phase 5。
+- ID: `P6-T1`
+- 标题: 增加只读辅助方法以列出 runs 并加载 run 摘要。
+- 来源: `whale-v1-platform-design.md`，Phase 6。
 - 状态: `in_progress`
 - 目标文件:
-  - `whale/runtime.py`
-  - `whale/workers.py`
-  - `whale/task_state.py`
+  - `whale/run_store.py`
+  - `tests/test_run_store.py`
   - `tests/test_whale.py`
 - 完成标准:
-  - 父 run 能记录子 worker/run 的关联元数据。
-  - 父级 trace 写入 `worker_started` 和 `worker_finished` 汇总事件。
-  - 现有 `delegate_result` 文本返回保持兼容。
+  - 提供只读 run 列表辅助方法。
+  - 提供只读 report/task_state 摘要加载辅助方法。
+  - 不改变现有 run/session 制品格式。
   - `conda run -n pico python -m pytest -q` 通过。
   - `conda run -n pico ruff check .` 通过。
 
@@ -47,8 +46,8 @@
 | `P4-T1` | Tool Policy Layer | done | 将工具风险和审批决策抽到 policy 层。 | `pytest`, `ruff` | 已新增 `whale/tool_policy.py` 和 `ToolPolicyDecision`，将未知工具、参数校验、重复调用和审批拒绝从 `run_tool()` 抽离；`pytest` 126 个测试通过；Ruff 通过。 |
 | `P4-T2` | Tool Policy Layer | done | 在不改变工具结果的前提下发出 `tool_policy_evaluated` trace 事件。 | `pytest`, `ruff` | 已在工具执行前写入 `tool_policy_evaluated` trace，包含工具名、参数、risk、approval、security、read-only 和路径摘要；`tool_executed` 结果保持兼容；`pytest` 127 个测试通过；Ruff 通过。 |
 | `P5-T1` | Worker Manager | done | 通过 worker manager 包装 `delegate`，同时保持子代理只读行为。 | `pytest`, `ruff` | 已新增 `whale/workers.py`、`WorkerManager` 和 `WorkerSpec`，`delegate` 由 worker manager 构造只读子代理并保留 depth/max_steps 限制；`pytest` 127 个测试通过；Ruff 通过。 |
-| `P5-T2` | Worker Manager | in_progress | 增加父子 run 关联和 worker trace 汇总事件。 | `pytest`, `ruff` | 待完成。 |
-| `P6-T1` | Run Query And Reports | todo | 增加只读辅助方法以列出 runs 并加载 run 摘要。 | `pytest`, `ruff` | 待完成。 |
+| `P5-T2` | Worker Manager | done | 增加父子 run 关联和 worker trace 汇总事件。 | `pytest`, `ruff` | 已为 worker 预分配 run id，在父 `task_state.workers` 记录 worker/run 关联，子 task_state 记录 `parent_run_id`/`worker_id`，父 trace 写入 `worker_started` 与 `worker_finished`；`pytest` 128 个测试通过；Ruff 通过。 |
+| `P6-T1` | Run Query And Reports | in_progress | 增加只读辅助方法以列出 runs 并加载 run 摘要。 | `pytest`, `ruff` | 待完成。 |
 | `P6-T2` | Run Query And Reports | todo | 扩展报告，加入 provider、skills、worker 和 memory 摘要。 | `pytest`, `ruff` | 待完成。 |
 
 ## 完成更新模板
