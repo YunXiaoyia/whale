@@ -1,4 +1,5 @@
 from whale import FakeModelClient, WhaleAgent, SessionStore, WorkspaceContext
+from whale.config import ContextConfig
 from whale.context_manager import ContextManager
 
 
@@ -34,6 +35,10 @@ def test_context_manager_assembles_sections_in_expected_order(tmp_path):
     assert prompt.index("Transcript:") < prompt.index("Current user request:")
     assert prompt.rstrip().endswith("Current user request:\nWhere is the deploy key?")
     assert metadata["section_order"] == ["prefix", "memory", "relevant_memory", "history", "current_request"]
+    assert metadata["context_policy"] == "default"
+    assert metadata["budget_profile"] == "standard"
+    assert metadata["context_reduction_enabled"] is True
+    assert metadata["section_floors"]["prefix"] == 1200
 
 
 def test_context_manager_reduces_relevant_memory_before_history_and_preserves_newer_context(tmp_path):
@@ -71,6 +76,42 @@ def test_context_manager_reduces_relevant_memory_before_history_and_preserves_ne
     assert "RECENT-CONTEXT" in prompt
     assert "OLD-CONTEXT" not in prompt
     assert "keep this request verbatim" in prompt
+
+
+def test_context_manager_uses_context_config_policy_and_budget_profile(tmp_path):
+    agent = build_agent(tmp_path, [])
+    manager = ContextManager(
+        agent,
+        config=ContextConfig(
+            name="compact",
+            budget_profile="tiny",
+            total_budget=700,
+            section_budgets={
+                "prefix": 100,
+                "memory": 90,
+                "relevant_memory": 80,
+                "history": 70,
+            },
+            section_floors={
+                "prefix": 60,
+                "memory": 50,
+                "relevant_memory": 40,
+                "history": 30,
+            },
+            relevant_memory_limit=2,
+            skill_instruction_budget=200,
+        ),
+    )
+
+    _, metadata = manager.build("inspect config policy")
+
+    assert metadata["context_policy"] == "compact"
+    assert metadata["budget_profile"] == "tiny"
+    assert metadata["prompt_budget_chars"] == 700
+    assert metadata["section_budgets"]["memory"] == 90
+    assert metadata["section_floors"]["history"] == 30
+    assert metadata["relevant_memory"]["limit"] == 2
+    assert metadata["skill_instruction_budget"] == 200
 
 
 def test_context_manager_renders_top_three_episodic_notes_per_note_under_budget(tmp_path):

@@ -81,6 +81,13 @@ class ContextConfig:
     relevant_memory_limit: int = 3
     skill_instruction_budget: int = 1200
     context_reduction_enabled: bool = True
+    trace_context_reduction: bool = True
+    trace_resume_boundary: bool = True
+    resume_boundary_statuses: tuple[str, ...] = (
+        "partial-stale",
+        "workspace-mismatch",
+        "schema-mismatch",
+    )
 
 
 @dataclass(frozen=True)

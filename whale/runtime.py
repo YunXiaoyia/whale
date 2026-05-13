@@ -562,6 +562,32 @@ class Whale:
         self.run_store.append_trace(task_state, payload)
         return payload
 
+    def resume_boundary_metadata(self, prompt_metadata):
+        status = str(prompt_metadata.get("resume_status", CHECKPOINT_NONE_STATUS))
+        stale_paths = list(prompt_metadata.get("stale_paths", []))
+        mismatch_fields = list(prompt_metadata.get("runtime_identity_mismatch_fields", []))
+        return {
+            "status": status,
+            "checkpoint_id": str(self.checkpoint_state().get("current_id", "")),
+            "requires_checkpoint": status in set(self.config.context.resume_boundary_statuses),
+            "stale_path_count": len(stale_paths),
+            "stale_paths": stale_paths,
+            "runtime_identity_mismatch_fields": mismatch_fields,
+            "schema_mismatch": status == CHECKPOINT_SCHEMA_MISMATCH_STATUS,
+        }
+
+    def context_reduction_metadata(self, prompt_metadata):
+        reductions = list(prompt_metadata.get("budget_reductions", []))
+        return {
+            "context_policy": prompt_metadata.get("context_policy", ""),
+            "budget_profile": prompt_metadata.get("budget_profile", ""),
+            "prompt_chars": int(prompt_metadata.get("prompt_chars", 0)),
+            "prompt_budget_chars": int(prompt_metadata.get("prompt_budget_chars", 0)),
+            "reduction_order": list(prompt_metadata.get("reduction_order", [])),
+            "reduction_count": len(reductions),
+            "reductions": reductions,
+        }
+
     def capture_workspace_snapshot(self):
         snapshot = {}
         for path in self.root.rglob("*"):
@@ -812,6 +838,18 @@ class Whale:
                     "duration_ms": int((time.monotonic() - prompt_started_at) * 1000),
                 },
             )
+            if self.config.context.trace_resume_boundary:
+                self.emit_trace(
+                    task_state,
+                    "resume_boundary_evaluated",
+                    self.resume_boundary_metadata(prompt_metadata),
+                )
+            if prompt_metadata.get("budget_reductions") and self.config.context.trace_context_reduction:
+                self.emit_trace(
+                    task_state,
+                    "context_reduction_applied",
+                    self.context_reduction_metadata(prompt_metadata),
+                )
             if prompt_metadata.get("resume_status") == CHECKPOINT_PARTIAL_STALE_STATUS:
                 checkpoint = self.create_checkpoint(task_state, user_message, trigger="freshness_mismatch")
                 self.run_store.write_task_state(task_state)

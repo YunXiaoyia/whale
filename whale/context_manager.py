@@ -65,7 +65,9 @@ class ContextManager:
         self.section_budgets = dict(self.config.section_budgets)
         if section_budgets:
             self.section_budgets.update({str(key): int(value) for key, value in section_budgets.items()})
-        self._section_floor_overrides = {str(key): int(value) for key, value in (section_floors or {}).items()}
+        floor_overrides = {} if section_budgets else dict(self.config.section_floors)
+        floor_overrides.update({str(key): int(value) for key, value in (section_floors or {}).items()})
+        self._section_floor_overrides = floor_overrides
         self.section_floors = self._compute_section_floors()
         self.reduction_order = tuple(reduction_order or self.config.reduction_order)
         self.relevant_memory_limit = int(self.config.relevant_memory_limit)
@@ -100,6 +102,7 @@ class ContextManager:
             memory_enabled = self.agent.feature_enabled("memory")
             relevant_memory_enabled = self.agent.feature_enabled("relevant_memory")
             context_reduction_enabled = self.agent.feature_enabled("context_reduction")
+        context_reduction_enabled = bool(context_reduction_enabled and self.config.context_reduction_enabled)
         section_texts = {
             "prefix": str(getattr(self.agent, "prefix", "")),
             "memory": "Memory:\n- disabled" if not memory_enabled else str(self.agent.memory_text()),
@@ -126,6 +129,7 @@ class ContextManager:
                 selected_notes=selected_notes,
                 user_message=user_message,
                 section_texts=section_texts,
+                context_reduction_enabled=context_reduction_enabled,
             )
             return prompt, metadata
 
@@ -173,6 +177,7 @@ class ContextManager:
             selected_notes=selected_notes,
             user_message=user_message,
             section_texts=section_texts,
+            context_reduction_enabled=context_reduction_enabled,
         )
         return prompt, metadata
 
@@ -215,7 +220,10 @@ class ContextManager:
             section: max(20, int(budget) // 4)
             for section, budget in self.section_budgets.items()
         }
-        floors.update(self._section_floor_overrides)
+        for section, floor in self._section_floor_overrides.items():
+            budget = int(self.section_budgets.get(section, 0))
+            if floor <= budget:
+                floors[section] = floor
         return floors
 
     def _render_sections(self, section_texts, budgets, selected_notes=None):
@@ -448,7 +456,17 @@ class ContextManager:
             ]
         ).strip()
 
-    def _metadata(self, prompt, rendered, budgets, reduction_log, selected_notes, user_message, section_texts):
+    def _metadata(
+        self,
+        prompt,
+        rendered,
+        budgets,
+        reduction_log,
+        selected_notes,
+        user_message,
+        section_texts,
+        context_reduction_enabled,
+    ):
         section_metadata = {}
         for section in SECTION_ORDER[:-1]:
             section_metadata[section] = {
@@ -465,10 +483,19 @@ class ContextManager:
             "prompt_chars": len(prompt),
             "prompt_budget_chars": self.total_budget,
             "prompt_over_budget": len(prompt) > self.total_budget,
+            "context_policy": self.config.name,
+            "budget_profile": self.config.budget_profile,
+            "context_reduction_enabled": bool(context_reduction_enabled),
+            "skill_instruction_budget": int(self.config.skill_instruction_budget),
             "section_order": list(SECTION_ORDER),
             "section_budgets": {
                 section: (None if section == CURRENT_REQUEST_SECTION else int(budgets.get(section, 0)))
                 for section in SECTION_ORDER
+            },
+            "section_floors": {
+                section: int(self.section_floors.get(section, 0))
+                for section in SECTION_ORDER
+                if section != CURRENT_REQUEST_SECTION
             },
             "sections": section_metadata,
             "budget_reductions": reduction_log,

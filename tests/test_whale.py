@@ -949,6 +949,10 @@ def test_prompt_budget_metadata_records_budget_decisions(tmp_path):
     relevant_section = agent.model_client.prompts[0].split("Relevant memory:\n", 1)[1].split("\n\nTranscript:", 1)[0]
 
     assert metadata["relevant_memory"]["selected_count"] == 3
+    assert metadata["context_policy"] == "default"
+    assert metadata["budget_profile"] == "standard"
+    assert metadata["context_reduction_enabled"] is True
+    assert metadata["section_floors"]["history"] >= 20
     assert len(metadata["relevant_memory"]["rendered_notes"]) == 3
     assert len([line for line in relevant_section.splitlines() if line.startswith("- ")]) == 3
     assert "alpha episodic" in relevant_section
@@ -989,12 +993,12 @@ def test_agent_creates_checkpoint_when_context_reduction_happens_and_artifacts_o
             }
         )
     agent.memory.append_note("checkpoint note " + ("B" * 220), tags=("checkpoint",), created_at="2026-04-07T11:00:00+00:00")
-    agent.context_manager.total_budget = 900
+    agent.context_manager.total_budget = 700
     agent.context_manager.section_budgets = {
-        "prefix": 120,
-        "memory": 120,
-        "relevant_memory": 120,
-        "history": 160,
+        "prefix": 400,
+        "memory": 300,
+        "relevant_memory": 300,
+        "history": 500,
     }
 
     assert agent.ask("Resume the long task") == "Done after checkpoint."
@@ -1024,6 +1028,11 @@ def test_agent_creates_checkpoint_when_context_reduction_happens_and_artifacts_o
     assert checkpoint_events
     assert checkpoint_events[-1]["checkpoint_id"] == checkpoint["checkpoint_id"]
     assert "current_goal" not in checkpoint_events[-1]
+    reduction_events = [event for event in trace_events if event["event"] == "context_reduction_applied"]
+    assert reduction_events
+    assert reduction_events[0]["context_policy"] == "default"
+    assert reduction_events[0]["budget_profile"] == "standard"
+    assert reduction_events[0]["reduction_count"] >= 1
 
 
 def test_resume_prompt_uses_checkpoint_state_not_just_history(tmp_path):
@@ -1377,6 +1386,18 @@ def test_resume_records_runtime_identity_mismatch_fields_in_metadata_and_trace(t
     mismatch_events = [event for event in trace_events if event["event"] == "runtime_identity_mismatch"]
     assert mismatch_events
     assert mismatch_events[0]["fields"] == [
+        "approval_policy",
+        "feature_flags",
+        "max_new_tokens",
+        "max_steps",
+        "model",
+        "shell_env_allowlist",
+    ]
+    boundary_events = [event for event in trace_events if event["event"] == "resume_boundary_evaluated"]
+    assert boundary_events
+    assert boundary_events[0]["status"] == "workspace-mismatch"
+    assert boundary_events[0]["requires_checkpoint"] is True
+    assert boundary_events[0]["runtime_identity_mismatch_fields"] == [
         "approval_policy",
         "feature_flags",
         "max_new_tokens",
