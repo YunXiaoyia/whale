@@ -1,4 +1,4 @@
-from whale.memory import LayeredMemory
+from whale.memory import LayeredMemory, memory_summary
 
 
 def test_working_memory_tracks_summary_and_recent_files():
@@ -120,3 +120,36 @@ def test_durable_memory_index_and_topic_notes_are_loaded_and_retrieved(tmp_path)
 
     lines = [line for line in memory.retrieval_view("constrained tools", limit=4).splitlines() if line.startswith("- ")]
     assert any("Use constrained tools instead of guessing." in line for line in lines)
+
+
+def test_memory_summary_reports_lifecycle_counts_and_limits(tmp_path):
+    file_path = tmp_path / "sample.txt"
+    file_path.write_text("alpha\n", encoding="utf-8")
+    memory = LayeredMemory(workspace_root=tmp_path)
+
+    memory.set_task_summary("Investigate memory lifecycle")
+    memory.remember_file("sample.txt")
+    memory.set_file_summary("sample.txt", "sample.txt: alpha")
+    memory.append_note("read sample.txt", tags=("sample.txt",), source="sample.txt")
+    memory.append_note("run_shell rejected; choose another action", kind="process")
+
+    summary = memory_summary(
+        memory.to_dict(),
+        workspace_root=tmp_path,
+        stale_summary_invalidations=2,
+        durable_promotions=("project-conventions: Use constrained tools.",),
+        durable_rejections=("dependency-facts:secret_shaped",),
+    )
+
+    assert summary["working_task_present"] is True
+    assert summary["working_file_count"] == 1
+    assert summary["working_file_limit"] == 8
+    assert summary["recent_files"] == ["sample.txt"]
+    assert summary["file_summary_count"] == 1
+    assert summary["fresh_file_summary_count"] == 1
+    assert summary["stale_file_summary_count"] == 0
+    assert summary["episodic_note_count"] == 2
+    assert summary["process_note_count"] == 1
+    assert summary["stale_summary_invalidations"] == 2
+    assert summary["durable_promotion_count"] == 1
+    assert summary["durable_rejection_count"] == 1

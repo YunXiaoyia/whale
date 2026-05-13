@@ -587,6 +587,45 @@ def render_memory_text(state, workspace_root=None):
     return "\n".join(lines)
 
 
+def memory_summary(
+    state,
+    workspace_root=None,
+    stale_summary_invalidations=0,
+    durable_promotions=(),
+    durable_rejections=(),
+    durable_superseded=(),
+):
+    state = normalize_memory_state(state, workspace_root)
+    file_summaries = state["file_summaries"]
+    fresh_file_summaries = []
+    stale_file_summaries = []
+    for path, summary in file_summaries.items():
+        if summary.get("freshness") == file_freshness(path, workspace_root):
+            fresh_file_summaries.append(path)
+        else:
+            stale_file_summaries.append(path)
+    return {
+        "enabled": True,
+        "working_task_present": bool(str(state["working"]["task_summary"]).strip()),
+        "working_file_count": len(state["working"]["recent_files"]),
+        "working_file_limit": WORKING_FILE_LIMIT,
+        "recent_files": list(state["working"]["recent_files"]),
+        "file_summary_count": len(file_summaries),
+        "fresh_file_summary_count": len(fresh_file_summaries),
+        "stale_file_summary_count": len(stale_file_summaries),
+        "file_summary_limit": FILE_SUMMARY_LIMIT,
+        "episodic_note_count": len(state["episodic_notes"]),
+        "episodic_note_limit": EPISODIC_NOTE_LIMIT,
+        "process_note_count": sum(1 for note in state["episodic_notes"] if note.get("kind") == "process"),
+        "durable_topic_count": len(state.get("durable_topics", [])),
+        "durable_topics": list(state.get("durable_topics", [])),
+        "stale_summary_invalidations": int(stale_summary_invalidations),
+        "durable_promotion_count": len(list(durable_promotions)),
+        "durable_rejection_count": len(list(durable_rejections)),
+        "durable_superseded_count": len(list(durable_superseded)),
+    }
+
+
 def is_effectively_empty(state, workspace_root=None):
     state = normalize_memory_state(state, workspace_root)
     return (
@@ -650,6 +689,22 @@ class LayeredMemory:
 
     def render_memory_text(self):
         return render_memory_text(self.state, self.workspace_root)
+
+    def summary(
+        self,
+        stale_summary_invalidations=0,
+        durable_promotions=(),
+        durable_rejections=(),
+        durable_superseded=(),
+    ):
+        return memory_summary(
+            self.state,
+            workspace_root=self.workspace_root,
+            stale_summary_invalidations=stale_summary_invalidations,
+            durable_promotions=durable_promotions,
+            durable_rejections=durable_rejections,
+            durable_superseded=durable_superseded,
+        )
 
     def promote_durable(self, promotions):
         if self.durable_store is None:

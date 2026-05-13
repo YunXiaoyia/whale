@@ -1463,6 +1463,10 @@ def test_explicit_memory_promotion_persists_durable_memory_topics(tmp_path):
         "project-conventions: Preserve local agent state under .whale/.",
         "key-decisions: Keep durable memory topic-based and lightweight.",
     ]
+    assert report["memory_summary"]["working_task_present"] is True
+    assert report["memory_summary"]["durable_promotion_count"] == 3
+    assert report["memory_summary"]["durable_topic_count"] == 2
+    assert report["memory_summary"]["durable_topics"] == ["key-decisions", "project-conventions"]
 
 
 def test_explicit_memory_promotion_supports_chinese_intent_and_labels(tmp_path):
@@ -1510,6 +1514,8 @@ def test_explicit_memory_promotion_rejects_secret_shaped_and_transient_lines(tmp
         "key-decisions:transient_task_state",
         "dependency-facts:noisy_output",
     ]
+    assert report["memory_summary"]["durable_promotion_count"] == 1
+    assert report["memory_summary"]["durable_rejection_count"] == 3
     assert "Use constrained tools instead of guessing." in conventions_path.read_text(encoding="utf-8")
     assert not dependency_path.exists()
 

@@ -1182,6 +1182,12 @@ class Whale:
     def build_report(self, task_state):
         # report 是一次运行的最终摘要；
         # 和 trace 的区别在于，trace 关注过程，report 关注结果与关键指标。
+        memory_summary = self.memory.summary(
+            stale_summary_invalidations=self.last_prompt_metadata.get("stale_summary_invalidations", 0),
+            durable_promotions=self.last_durable_promotions,
+            durable_rejections=self.last_durable_rejections,
+            durable_superseded=self.last_durable_superseded,
+        )
         return {
             "run_id": task_state.run_id,
             "task_id": task_state.task_id,
@@ -1194,6 +1200,7 @@ class Whale:
             "resume_status": task_state.resume_status,
             "task_state": task_state.to_dict(),
             "prompt_metadata": self.last_prompt_metadata,
+            "memory_summary": memory_summary,
             "durable_promotions": list(self.last_durable_promotions),
             "durable_rejections": list(self.last_durable_rejections),
             "durable_superseded": list(self.last_durable_superseded),
