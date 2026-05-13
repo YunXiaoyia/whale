@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import memory as memorylib
+from .config import DEFAULT_TOOL_CONFIG, DEFAULT_WHALE_CONFIG
 from .context_manager import ContextManager
 from .run_store import RunStore
 from .task_state import TaskState
@@ -24,13 +25,8 @@ from .workspace import IGNORED_PATH_NAMES, MAX_HISTORY, WorkspaceContext, clip, 
 
 SENSITIVE_ENV_NAME_MARKERS = ("API_KEY", "TOKEN", "SECRET", "PASSWORD")
 REDACTED_VALUE = "<redacted>"
-DEFAULT_SHELL_ENV_ALLOWLIST = ("HOME", "LANG", "LC_ALL", "LC_CTYPE", "LOGNAME", "PATH", "PWD", "SHELL", "TERM", "TMPDIR", "TMP", "TEMP", "USER")
-DEFAULT_FEATURE_FLAGS = {
-    "memory": True,
-    "relevant_memory": True,
-    "context_reduction": True,
-    "prompt_cache": True,
-}
+DEFAULT_SHELL_ENV_ALLOWLIST = DEFAULT_TOOL_CONFIG.shell_env_allowlist
+DEFAULT_FEATURE_FLAGS = dict(DEFAULT_WHALE_CONFIG.runtime.feature_flags)
 CHECKPOINT_SCHEMA_VERSION = "phase1-v1"
 CHECKPOINT_NONE_STATUS = "no-checkpoint"
 CHECKPOINT_FULL_VALID_STATUS = "full-valid"
@@ -92,32 +88,34 @@ class Whale:
         session_store,
         session=None,
         run_store=None,
-        approval_policy="ask",
-        max_steps=6,
-        max_new_tokens=512,
+        approval_policy=None,
+        max_steps=None,
+        max_new_tokens=None,
         depth=0,
-        max_depth=1,
+        max_depth=None,
         read_only=False,
         shell_env_allowlist=None,
         secret_env_names=None,
         feature_flags=None,
+        config=None,
     ):
+        self.config = config or DEFAULT_WHALE_CONFIG
         self.model_client = model_client
         self.workspace = workspace
         self.root = Path(workspace.repo_root)
         self.session_store = session_store
-        self.approval_policy = approval_policy
-        self.max_steps = max_steps
-        self.max_new_tokens = max_new_tokens
+        self.approval_policy = approval_policy or self.config.tools.approval_policy
+        self.max_steps = int(max_steps if max_steps is not None else self.config.runtime.max_steps)
+        self.max_new_tokens = int(max_new_tokens if max_new_tokens is not None else self.config.runtime.max_new_tokens)
         self.depth = depth
-        self.max_depth = max_depth
+        self.max_depth = int(max_depth if max_depth is not None else self.config.workers.max_depth)
         self.read_only = read_only
-        self.shell_env_allowlist = tuple(shell_env_allowlist or DEFAULT_SHELL_ENV_ALLOWLIST)
+        self.shell_env_allowlist = tuple(shell_env_allowlist or self.config.tools.shell_env_allowlist)
         self.secret_env_names = {str(name).upper() for name in (secret_env_names or ())}
-        self.feature_flags = dict(DEFAULT_FEATURE_FLAGS)
+        self.feature_flags = dict(self.config.runtime.feature_flags)
         if feature_flags:
             self.feature_flags.update({str(key): bool(value) for key, value in feature_flags.items()})
-        self.run_store = run_store or RunStore(Path(workspace.repo_root) / ".whale" / "runs")
+        self.run_store = run_store or RunStore(self.config.stores.run_root(workspace.repo_root))
         self.session = session or {
             "id": datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6],
             "created_at": now(),
@@ -134,7 +132,7 @@ class Whale:
         self.tools = self.build_tools()
         self.prefix_state = self.build_prefix()
         self.prefix = self.prefix_state.text
-        self.context_manager = ContextManager(self)
+        self.context_manager = ContextManager(self, config=self.config.context)
         self.resume_state = self.evaluate_resume_state()
         self.session_path = self.session_store.save(self.session)
         self.current_task_state = None

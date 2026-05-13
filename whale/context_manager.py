@@ -9,25 +9,17 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from .config import DEFAULT_CONTEXT_CONFIG
 
-DEFAULT_TOTAL_BUDGET = 12000
-DEFAULT_SECTION_BUDGETS = {
-    "prefix": 3600,
-    "memory": 1600,
-    "relevant_memory": 1200,
-    "history": 5200,
-}
-DEFAULT_SECTION_FLOORS = {
-    "prefix": 1200,
-    "memory": 400,
-    "relevant_memory": 300,
-    "history": 1500,
-}
+
+DEFAULT_TOTAL_BUDGET = DEFAULT_CONTEXT_CONFIG.total_budget
+DEFAULT_SECTION_BUDGETS = dict(DEFAULT_CONTEXT_CONFIG.section_budgets)
+DEFAULT_SECTION_FLOORS = dict(DEFAULT_CONTEXT_CONFIG.section_floors)
 # 当 prompt 超预算时，会优先压缩这些 section。
-DEFAULT_REDUCTION_ORDER = ("relevant_memory", "history", "memory", "prefix")
+DEFAULT_REDUCTION_ORDER = DEFAULT_CONTEXT_CONFIG.reduction_order
 SECTION_ORDER = ("prefix", "memory", "relevant_memory", "history", "current_request")
 CURRENT_REQUEST_SECTION = "current_request"
-RELEVANT_MEMORY_LIMIT = 3
+RELEVANT_MEMORY_LIMIT = DEFAULT_CONTEXT_CONFIG.relevant_memory_limit
 
 
 def _tail_clip(text, limit):
@@ -61,19 +53,22 @@ class ContextManager:
     def __init__(
         self,
         agent,
-        total_budget=DEFAULT_TOTAL_BUDGET,
+        total_budget=None,
         section_budgets=None,
         section_floors=None,
         reduction_order=None,
+        config=None,
     ):
+        self.config = config or DEFAULT_CONTEXT_CONFIG
         self.agent = agent
-        self.total_budget = int(total_budget)
-        self.section_budgets = dict(DEFAULT_SECTION_BUDGETS)
+        self.total_budget = int(total_budget if total_budget is not None else self.config.total_budget)
+        self.section_budgets = dict(self.config.section_budgets)
         if section_budgets:
             self.section_budgets.update({str(key): int(value) for key, value in section_budgets.items()})
         self._section_floor_overrides = {str(key): int(value) for key, value in (section_floors or {}).items()}
         self.section_floors = self._compute_section_floors()
-        self.reduction_order = tuple(reduction_order or DEFAULT_REDUCTION_ORDER)
+        self.reduction_order = tuple(reduction_order or self.config.reduction_order)
+        self.relevant_memory_limit = int(self.config.relevant_memory_limit)
 
     def build(self, user_message):
         """按预算组装一轮完整 prompt。
@@ -118,7 +113,7 @@ class ContextManager:
             section_texts["prefix"] = section_texts["prefix"] + "\n\n" + checkpoint_text
         selected_notes = []
         if memory_enabled and relevant_memory_enabled and hasattr(self.agent, "memory") and hasattr(self.agent.memory, "retrieval_candidates"):
-            selected_notes = self.agent.memory.retrieval_candidates(user_message, limit=RELEVANT_MEMORY_LIMIT)
+            selected_notes = self.agent.memory.retrieval_candidates(user_message, limit=self.relevant_memory_limit)
 
         if not context_reduction_enabled:
             rendered = self._render_sections_without_reduction(section_texts, selected_notes=selected_notes)
@@ -479,7 +474,7 @@ class ContextManager:
             "budget_reductions": reduction_log,
             "reduction_order": list(self.reduction_order),
             "relevant_memory": {
-                "limit": RELEVANT_MEMORY_LIMIT,
+                "limit": self.relevant_memory_limit,
                 "selected_count": len(selected_notes),
                 "selected_notes": [note["text"] for note in selected_notes],
                 "selected_sources": [str(note.get("source", "")).strip() for note in selected_notes],

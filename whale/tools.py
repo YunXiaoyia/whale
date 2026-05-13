@@ -9,6 +9,7 @@ import subprocess
 import textwrap
 from functools import partial
 
+from .config import DEFAULT_TOOL_CONFIG, DEFAULT_WORKER_CONFIG
 from .workspace import IGNORED_PATH_NAMES, clip
 
 BASE_TOOL_SPECS = {
@@ -45,7 +46,7 @@ BASE_TOOL_SPECS = {
 }
 
 DELEGATE_TOOL_SPEC = {
-    "schema": {"task": "str", "max_steps": "int=3"},
+    "schema": {"task": "str", "max_steps": f"int={DEFAULT_WORKER_CONFIG.default_max_steps}"},
     "risky": False,
     "description": "Ask a bounded read-only child agent to investigate.",
 }
@@ -57,7 +58,7 @@ TOOL_EXAMPLES = {
     "run_shell": '<tool>{"name":"run_shell","args":{"command":"uv run --with pytest python -m pytest -q","timeout":20}}</tool>',
     "write_file": '<tool name="write_file" path="binary_search.py"><content>def binary_search(nums, target):\n    return -1\n</content></tool>',
     "patch_file": '<tool name="patch_file" path="binary_search.py"><old_text>return -1</old_text><new_text>return mid</new_text></tool>',
-    "delegate": '<tool>{"name":"delegate","args":{"task":"inspect README.md","max_steps":3}}</tool>',
+    "delegate": f'<tool>{{"name":"delegate","args":{{"task":"inspect README.md","max_steps":{DEFAULT_WORKER_CONFIG.default_max_steps}}}}}</tool>',
 }
 
 
@@ -109,9 +110,11 @@ def validate_tool(agent, name, args):
         command = str(args.get("command", "")).strip()
         if not command:
             raise ValueError("command must not be empty")
-        timeout = int(args.get("timeout", 20))
-        if timeout < 1 or timeout > 120:
-            raise ValueError("timeout must be in [1, 120]")
+        timeout = int(args.get("timeout", DEFAULT_TOOL_CONFIG.default_shell_timeout))
+        if timeout < DEFAULT_TOOL_CONFIG.shell_timeout_min or timeout > DEFAULT_TOOL_CONFIG.shell_timeout_max:
+            raise ValueError(
+                f"timeout must be in [{DEFAULT_TOOL_CONFIG.shell_timeout_min}, {DEFAULT_TOOL_CONFIG.shell_timeout_max}]"
+            )
         return
 
     if name == "write_file":
@@ -208,9 +211,11 @@ def tool_run_shell(agent, args):
     command = str(args.get("command", "")).strip()
     if not command:
         raise ValueError("command must not be empty")
-    timeout = int(args.get("timeout", 20))
-    if timeout < 1 or timeout > 120:
-        raise ValueError("timeout must be in [1, 120]")
+    timeout = int(args.get("timeout", DEFAULT_TOOL_CONFIG.default_shell_timeout))
+    if timeout < DEFAULT_TOOL_CONFIG.shell_timeout_min or timeout > DEFAULT_TOOL_CONFIG.shell_timeout_max:
+        raise ValueError(
+            f"timeout must be in [{DEFAULT_TOOL_CONFIG.shell_timeout_min}, {DEFAULT_TOOL_CONFIG.shell_timeout_max}]"
+        )
     result = subprocess.run(
         command,
         cwd=agent.root,
@@ -273,7 +278,7 @@ def tool_delegate(agent, args):
         session_store=agent.session_store,
         run_store=agent.run_store,
         approval_policy="never",
-        max_steps=int(args.get("max_steps", 3)),
+        max_steps=int(args.get("max_steps", DEFAULT_WORKER_CONFIG.default_max_steps)),
         max_new_tokens=agent.max_new_tokens,
         depth=agent.depth + 1,
         max_depth=agent.max_depth,

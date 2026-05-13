@@ -10,11 +10,12 @@ from datetime import datetime
 import re
 from pathlib import Path
 
+from .config import DEFAULT_MEMORY_CONFIG, DEFAULT_STORE_CONFIG
 from .workspace import clip, now
 
-WORKING_FILE_LIMIT = 8
-EPISODIC_NOTE_LIMIT = 12
-FILE_SUMMARY_LIMIT = 6
+WORKING_FILE_LIMIT = DEFAULT_MEMORY_CONFIG.working_file_limit
+EPISODIC_NOTE_LIMIT = DEFAULT_MEMORY_CONFIG.episodic_note_limit
+FILE_SUMMARY_LIMIT = DEFAULT_MEMORY_CONFIG.file_summary_limit
 
 DURABLE_TOPIC_DEFAULTS = {
     "project-conventions": {
@@ -141,7 +142,7 @@ class DurableMemoryStore:
                 return subject or None
         return None
 
-    def retrieval_candidates(self, query, limit=3):
+    def retrieval_candidates(self, query, limit=DEFAULT_MEMORY_CONFIG.relevant_memory_limit):
         query_tokens = _tokenize(query)
         ranked = []
         for topic in self.load_index():
@@ -294,7 +295,7 @@ def _parse_timestamp(value):
 
 def _normalize_note(note, index):
     if isinstance(note, str):
-        text = clip(note.strip(), 500)
+        text = clip(note.strip(), DEFAULT_MEMORY_CONFIG.note_chars)
         return {
             "text": text,
             "tags": [],
@@ -305,7 +306,7 @@ def _normalize_note(note, index):
         }
 
     if not isinstance(note, dict):
-        text = clip(str(note).strip(), 500)
+        text = clip(str(note).strip(), DEFAULT_MEMORY_CONFIG.note_chars)
         return {
             "text": text,
             "tags": [],
@@ -315,7 +316,7 @@ def _normalize_note(note, index):
             "kind": "episodic",
         }
 
-    text = clip(str(note.get("text", "")).strip(), 500)
+    text = clip(str(note.get("text", "")).strip(), DEFAULT_MEMORY_CONFIG.note_chars)
     tags = [str(tag).strip() for tag in _ensure_list(note.get("tags", [])) if str(tag).strip()]
     source = str(note.get("source", "")).strip()
     created_at = str(note.get("created_at", "")).strip() or now()
@@ -344,7 +345,7 @@ def normalize_memory_state(state, workspace_root=None):
         working = {}
     working.setdefault("task_summary", "")
     working.setdefault("recent_files", [])
-    working["task_summary"] = clip(str(working.get("task_summary", "")).strip(), 300)
+    working["task_summary"] = clip(str(working.get("task_summary", "")).strip(), DEFAULT_MEMORY_CONFIG.task_summary_chars)
     working["recent_files"] = _dedupe_preserve_order(
         [
             canonicalize_path(path, workspace_root)
@@ -355,7 +356,7 @@ def normalize_memory_state(state, workspace_root=None):
     state["working"] = working
 
     if not str(working["task_summary"]).strip() and state.get("task"):
-        working["task_summary"] = clip(str(state.get("task", "")).strip(), 300)
+        working["task_summary"] = clip(str(state.get("task", "")).strip(), DEFAULT_MEMORY_CONFIG.task_summary_chars)
     if not working["recent_files"] and state.get("files"):
         working["recent_files"] = _dedupe_preserve_order(
             [
@@ -392,12 +393,12 @@ def normalize_memory_state(state, workspace_root=None):
     for path, summary in file_summaries.items():
         path = canonicalize_path(path, workspace_root)
         if isinstance(summary, dict):
-            text = clip(str(summary.get("summary", "")).strip(), 500)
+            text = clip(str(summary.get("summary", "")).strip(), DEFAULT_MEMORY_CONFIG.file_summary_chars)
             created_at = str(summary.get("created_at", "")).strip() or now()
             freshness = summary.get("freshness")
             freshness = None if freshness in (None, "") else str(freshness).strip() or None
         else:
-            text = clip(str(summary).strip(), 500)
+            text = clip(str(summary).strip(), DEFAULT_MEMORY_CONFIG.file_summary_chars)
             created_at = now()
             freshness = None
         if not path or not text:
@@ -418,7 +419,7 @@ def normalize_memory_state(state, workspace_root=None):
     state["task"] = working["task_summary"]
     state["files"] = list(working["recent_files"])
     state["notes"] = [note["text"] for note in episodic_notes]
-    durable_root = Path(workspace_root) / ".whale" / "memory" if workspace_root is not None else None
+    durable_root = DEFAULT_STORE_CONFIG.memory_root(workspace_root) if workspace_root is not None else None
     durable_store = DurableMemoryStore(durable_root) if durable_root is not None else None
     state["durable_topics"] = durable_store.topic_slugs() if durable_store is not None else []
     return state
@@ -426,7 +427,7 @@ def normalize_memory_state(state, workspace_root=None):
 
 def set_task_summary(state, summary, workspace_root=None):
     state = normalize_memory_state(state, workspace_root)
-    state["working"]["task_summary"] = clip(str(summary).strip(), 300)
+    state["working"]["task_summary"] = clip(str(summary).strip(), DEFAULT_MEMORY_CONFIG.task_summary_chars)
     state["task"] = state["working"]["task_summary"]
     return state
 
@@ -445,7 +446,7 @@ def remember_file(state, path, workspace_root=None):
 
 def append_note(state, text, tags=(), source="", created_at=None, workspace_root=None, kind="episodic"):
     state = normalize_memory_state(state, workspace_root)
-    text = clip(str(text).strip(), 500)
+    text = clip(str(text).strip(), DEFAULT_MEMORY_CONFIG.note_chars)
     if not text:
         return state
 
@@ -470,7 +471,7 @@ def append_note(state, text, tags=(), source="", created_at=None, workspace_root
 def set_file_summary(state, path, summary, workspace_root=None):
     state = normalize_memory_state(state, workspace_root)
     path = canonicalize_path(path, workspace_root).strip()
-    summary = clip(str(summary).strip(), 500)
+    summary = clip(str(summary).strip(), DEFAULT_MEMORY_CONFIG.file_summary_chars)
     if not path or not summary:
         return state
     state["file_summaries"][path] = {
@@ -502,7 +503,7 @@ def invalidate_stale_file_summaries(state, workspace_root=None):
     return state, invalidated
 
 
-def summarize_read_result(result, limit=180):
+def summarize_read_result(result, limit=DEFAULT_MEMORY_CONFIG.read_summary_chars):
     # 我们不会把完整文件内容塞进记忆层，
     # 这里只保留足够提醒下一轮“刚刚读到了什么”的短摘要。
     lines = [line.strip() for line in str(result).splitlines() if line.strip()]
@@ -516,7 +517,7 @@ def summarize_read_result(result, limit=180):
     return clip(summary, limit)
 
 
-def retrieval_candidates(state, query, limit=3, workspace_root=None):
+def retrieval_candidates(state, query, limit=DEFAULT_MEMORY_CONFIG.relevant_memory_limit, workspace_root=None):
     state = normalize_memory_state(state, workspace_root)
     query_tokens = _tokenize(query)
     ranked = []
@@ -534,7 +535,7 @@ def retrieval_candidates(state, query, limit=3, workspace_root=None):
         ranked.append(((exact_tag_match, keyword_overlap, recency, note_index), note))
 
     if workspace_root is not None:
-        durable_store = DurableMemoryStore(Path(workspace_root) / ".whale" / "memory")
+        durable_store = DurableMemoryStore(DEFAULT_STORE_CONFIG.memory_root(workspace_root))
         for note in durable_store.retrieval_candidates(query, limit=limit):
             note_tags = {tag.lower() for tag in note.get("tags", [])}
             note_tokens = _tokenize(note.get("text", "")) | _tokenize(note.get("source", "")) | note_tags
@@ -547,7 +548,7 @@ def retrieval_candidates(state, query, limit=3, workspace_root=None):
     return [note for _, note in ranked[:limit]]
 
 
-def retrieval_view(state, query, limit=3, workspace_root=None):
+def retrieval_view(state, query, limit=DEFAULT_MEMORY_CONFIG.relevant_memory_limit, workspace_root=None):
     candidates = retrieval_candidates(state, query, limit=limit, workspace_root=workspace_root)
     lines = ["Relevant memory:"]
     if not candidates:
@@ -600,7 +601,7 @@ class LayeredMemory:
     def __init__(self, state=None, workspace_root=None):
         self.workspace_root = workspace_root
         self.state = normalize_memory_state(state, workspace_root)
-        self.durable_store = DurableMemoryStore(Path(workspace_root) / ".whale" / "memory") if workspace_root is not None else None
+        self.durable_store = DurableMemoryStore(DEFAULT_STORE_CONFIG.memory_root(workspace_root)) if workspace_root is not None else None
 
     def to_dict(self):
         self.state = normalize_memory_state(self.state, self.workspace_root)
@@ -641,10 +642,10 @@ class LayeredMemory:
         self.state, invalidated = invalidate_stale_file_summaries(self.state, self.workspace_root)
         return invalidated
 
-    def retrieval_candidates(self, query, limit=3):
+    def retrieval_candidates(self, query, limit=DEFAULT_MEMORY_CONFIG.relevant_memory_limit):
         return retrieval_candidates(self.state, query, limit=limit, workspace_root=self.workspace_root)
 
-    def retrieval_view(self, query, limit=3):
+    def retrieval_view(self, query, limit=DEFAULT_MEMORY_CONFIG.relevant_memory_limit):
         return retrieval_view(self.state, query, limit=limit, workspace_root=self.workspace_root)
 
     def render_memory_text(self):

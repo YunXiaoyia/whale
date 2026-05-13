@@ -16,20 +16,18 @@
 
 ## 当前任务
 
-- ID: `P2-T1`
-- 标题: 为 provider、context、tools、workers、memory 和 stores 引入内部配置 dataclass。
+- ID: `P2-T2`
+- 标题: 在不改变 CLI 行为的前提下，将配置默认值接入 `Whale` 构造。
 - 来源: `whale-v1-platform-design.md`，Phase 2。
 - 状态: `in_progress`
 - 目标文件:
-  - `whale/config.py`
+  - `whale/cli.py`
   - `whale/runtime.py`
-  - `whale/context_manager.py`
-  - `whale/tools.py`
-  - `whale/memory.py`
+  - `whale/config.py`
 - 完成标准:
-  - 已添加内部配置 dataclass，覆盖 provider、context、tools、workers、memory 和 stores。
-  - 现有 CLI 默认值和 `WHALE_*` 环境变量行为保持不变。
-  - 现有测试不需要真实 provider 即可验证默认配置行为。
+  - 已将内部配置对象接入 `Whale` 构造与 CLI 装配链路。
+  - 现有 CLI 参数、provider 环境变量和默认值优先级保持不变。
+  - 已有测试覆盖默认配置和自定义配置接入。
   - `conda run -n pico python -m pytest -q` 通过。
   - `conda run -n pico ruff check .` 通过。
 
@@ -39,8 +37,8 @@
 | --- | --- | --- | --- | --- | --- |
 | `P1-T1` | Contracts And Documentation | done | 添加 Whale V1 平台设计文档。 | `pytest`, `ruff` | 已添加 `docs/architecture/whale-v1-platform-design.md`；105 个测试通过；Ruff 通过。 |
 | `P1-T2` | Contracts And Documentation | done | 为 run/session 制品补充 schema 说明。 | `pytest`, `ruff` | 已新增 `docs/architecture/run-session-schema.md` 并在 `agent-harness-v1-overview.md` 链接；文档覆盖 session、run、trace、report、checkpoint、memory 和 V0 兼容；105 个测试通过；Ruff 通过。 |
-| `P2-T1` | Configuration Objects | in_progress | 为 provider、context、tools、workers、memory 和 stores 引入内部配置 dataclass。 | `pytest`, `ruff` | 待完成。 |
-| `P2-T2` | Configuration Objects | todo | 在不改变 CLI 行为的前提下，将配置默认值接入 `Whale` 构造。 | `pytest`, `ruff`, `whale --help` | 待完成。 |
+| `P2-T1` | Configuration Objects | done | 为 provider、context、tools、workers、memory 和 stores 引入内部配置 dataclass。 | `pytest`, `ruff` | 已添加 `WhaleConfig`、`ProviderProfile`、`ContextConfig`、`ToolConfig`、`WorkerConfig`、`MemoryConfig` 和 `StoreConfig`；`pytest` 109 个测试通过；Ruff 通过。 |
+| `P2-T2` | Configuration Objects | in_progress | 在不改变 CLI 行为的前提下，将配置默认值接入 `Whale` 构造。 | `pytest`, `ruff`, `whale --help` | 待完成。 |
 | `P2-T3` | Context Governance | todo | 引入上下文预算、裁剪策略、恢复边界和 trace 事件。 | `pytest`, `ruff` | 待完成。 |
 | `P2-T4` | Memory Lifecycle | todo | 明确 memory 的加载、更新、压缩、持久化和报告摘要行为，并补测试。 | `pytest`, `ruff` | 待完成。 |
 | `P3-T1` | Skill Discovery | todo | 添加安全的 `SKILL.md` 发现与 `SkillManifest` 解析。 | `pytest`, `ruff` | 待完成。 |
