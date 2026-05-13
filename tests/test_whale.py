@@ -256,6 +256,11 @@ def test_delegate_uses_child_agent(tmp_path):
     assert worker_finished["status"] == "completed"
     assert worker_finished["final_answer"] == "Child result."
 
+    parent_report = agent.run_store.load_report(agent.current_task_state.run_id)
+    assert parent_report["worker_summary"]["worker_count"] == 1
+    assert parent_report["worker_summary"]["workers"][0]["run_id"] == worker_spec.run_id
+    assert parent_report["worker_summary"]["status_counts"] == {"completed": 1}
+
     summaries = agent.run_store.list_runs()
     parent_summary = next(item for item in summaries if item["run_id"] == agent.current_task_state.run_id)
     child_summary = next(item for item in summaries if item["run_id"] == worker_spec.run_id)
@@ -910,6 +915,11 @@ def test_successful_run_persists_run_artifacts_and_stop_reason(tmp_path):
     assert report["stop_reason"] == "final_answer_returned"
     assert report["task_state"]["stop_reason"] == "final_answer_returned"
     assert report["run_id"] == task_state["run_id"]
+    assert report["provider_summary"]["client_type"] == "FakeModelClient"
+    assert report["skills_summary"]["discovered_count"] == 0
+    assert report["skills_summary"]["selected_count"] == 0
+    assert report["worker_summary"] == {"worker_count": 0, "workers": [], "status_counts": {}}
+    assert report["memory_summary"]["working_task_present"] is True
     trace_events = [json.loads(line)["event"] for line in trace_lines]
     assert trace_events[0] == "run_started"
     assert trace_events[-1] == "run_finished"
@@ -1687,6 +1697,10 @@ def test_agent_traces_selected_skill_without_full_instruction_body(tmp_path):
     assert skill_events[0]["selected_names"] == ["python-testing"]
     assert skill_events[0]["selected_sources"] == ["skills/python-testing/SKILL.md"]
     assert "Use pytest -q" not in json.dumps(skill_events[0])
+    report = agent.run_store.load_report(agent.current_task_state)
+    assert report["skills_summary"]["selected_names"] == ["python-testing"]
+    assert report["skills_summary"]["selected_sources"] == ["skills/python-testing/SKILL.md"]
+    assert report["skills_summary"]["selected_count"] == 1
 
 
 def test_recent_transcript_entries_stay_richer_than_older_ones(tmp_path):

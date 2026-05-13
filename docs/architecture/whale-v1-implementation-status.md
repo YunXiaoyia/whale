@@ -16,20 +16,14 @@
 
 ## 当前任务
 
-- ID: `P6-T2`
-- 标题: 扩展报告，加入 provider、skills、worker 和 memory 摘要。
-- 来源: `whale-v1-platform-design.md`，Phase 6。
-- 状态: `in_progress`
+- ID: `V1-COMPLETE`
+- 标题: Whale V1 平台升级完成。
+- 来源: `whale-v1-platform-design.md`。
+- 状态: `done`
 - 目标文件:
-  - `whale/runtime.py`
-  - `tests/test_whale.py`
-  - `docs/architecture/v1-summary.md`
+  - 无
 - 完成标准:
-  - report 中包含 provider 摘要。
-  - report 中包含 skills 摘要。
-  - report 中包含 worker 摘要。
-  - report 保留 memory 摘要并有测试覆盖。
-  - 写出 V1 总结文档，包含使用说明和更新说明。
+  - 所有任务队列项均为 `done`。
   - `conda run -n pico python -m pytest -q` 通过。
   - `conda run -n pico ruff check .` 通过。
 
@@ -50,8 +44,7 @@
 | `P5-T1` | Worker Manager | done | 通过 worker manager 包装 `delegate`，同时保持子代理只读行为。 | `pytest`, `ruff` | 已新增 `whale/workers.py`、`WorkerManager` 和 `WorkerSpec`，`delegate` 由 worker manager 构造只读子代理并保留 depth/max_steps 限制；`pytest` 127 个测试通过；Ruff 通过。 |
 | `P5-T2` | Worker Manager | done | 增加父子 run 关联和 worker trace 汇总事件。 | `pytest`, `ruff` | 已为 worker 预分配 run id，在父 `task_state.workers` 记录 worker/run 关联，子 task_state 记录 `parent_run_id`/`worker_id`，父 trace 写入 `worker_started` 与 `worker_finished`；`pytest` 128 个测试通过；Ruff 通过。 |
 | `P6-T1` | Run Query And Reports | done | 增加只读辅助方法以列出 runs 并加载 run 摘要。 | `pytest`, `ruff` | 已新增 `RunStore.list_runs()` 和 `RunStore.load_run_summary()`，支持缺失 report 时从 task_state 回退，并能读取 worker 关联摘要；`pytest` 130 个测试通过；Ruff 通过。 |
-| `P6-T2` | Run Query And Reports | in_progress | 扩展报告，加入 provider、skills、worker 和 memory 摘要。 | `pytest`, `ruff` | 待完成。 |
-**最后写出v1总结.md文档**包含使用说明和更新说明
+| `P6-T2` | Run Query And Reports | done | 扩展报告，加入 provider、skills、worker 和 memory 摘要。 | `pytest`, `ruff` | 已在 report 中新增 `provider_summary`、`skills_summary`、`worker_summary` 并保留 `memory_summary`；已新增 `docs/architecture/v1-summary.md` 使用说明和更新说明；`pytest` 130 个测试通过；Ruff 通过。 |
 ## 完成更新模板
 
 完成某项任务时，更新：

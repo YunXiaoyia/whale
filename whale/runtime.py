@@ -1191,11 +1191,52 @@ class Whale:
             "resume_status": task_state.resume_status,
             "task_state": task_state.to_dict(),
             "prompt_metadata": self.last_prompt_metadata,
+            "provider_summary": self.provider_summary(),
+            "skills_summary": self.skills_summary(),
+            "worker_summary": self.worker_summary(task_state),
             "memory_summary": memory_summary,
             "durable_promotions": list(self.last_durable_promotions),
             "durable_rejections": list(self.last_durable_rejections),
             "durable_superseded": list(self.last_durable_superseded),
             "redacted_env": self.detected_secret_env_summary(),
+        }
+
+    def provider_summary(self):
+        model_client = self.model_client
+        return {
+            "client_type": model_client.__class__.__name__,
+            "model": str(getattr(model_client, "model", "")),
+            "base_url": str(getattr(model_client, "base_url", "")),
+            "host": str(getattr(model_client, "host", "")),
+            "supports_prompt_cache": bool(getattr(model_client, "supports_prompt_cache", False)),
+            "prompt_cache_supported": bool(self.last_prompt_metadata.get("prompt_cache_supported", False)),
+            "cache_hit": bool(self.last_prompt_metadata.get("cache_hit", False)),
+            "input_tokens": int(self.last_prompt_metadata.get("input_tokens", 0) or 0),
+            "cached_tokens": int(self.last_prompt_metadata.get("cached_tokens", 0) or 0),
+        }
+
+    def skills_summary(self):
+        metadata = dict(self.last_skill_metadata or {})
+        return {
+            "discovered_count": int(metadata.get("discovered_count", 0) or 0),
+            "selected_count": int(metadata.get("selected_count", 0) or 0),
+            "selected_names": list(metadata.get("selected_names", [])),
+            "selected_sources": list(metadata.get("selected_sources", [])),
+            "rendered_chars": int(metadata.get("rendered_chars", 0) or 0),
+            "instruction_budget": int(metadata.get("instruction_budget", 0) or 0),
+        }
+
+    @staticmethod
+    def worker_summary(task_state):
+        workers = list(getattr(task_state, "workers", []) or [])
+        status_counts = {}
+        for worker in workers:
+            status = str(worker.get("status", "") or "unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+        return {
+            "worker_count": len(workers),
+            "workers": workers,
+            "status_counts": status_counts,
         }
 
     def tool_example(self, name):
