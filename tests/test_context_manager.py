@@ -278,3 +278,23 @@ def test_context_manager_relevant_memory_can_mix_durable_notes(tmp_path):
     assert metadata["relevant_memory"]["selected_durable_count"] == 1
     assert metadata["relevant_memory"]["selected_sources"] == ["project-conventions"]
     assert metadata["relevant_memory"]["selected_kinds"] == ["durable"]
+
+
+def test_context_manager_injects_selected_skill_into_prefix_metadata(tmp_path):
+    skill_path = tmp_path / "skills" / "python-testing" / "SKILL.md"
+    skill_path.parent.mkdir(parents=True)
+    skill_path.write_text(
+        "---\ndescription: Run pytest safely.\ntriggers: pytest\n---\n"
+        "# Python testing\nUse focused pytest commands.\n",
+        encoding="utf-8",
+    )
+    agent = build_agent(tmp_path, [])
+
+    prompt, metadata = ContextManager(agent).build("Please run pytest")
+
+    assert "Selected skills:" in prompt
+    assert "python-testing: Run pytest safely." in prompt
+    assert "Use focused pytest commands." in prompt
+    assert metadata["skills"]["discovered_count"] == 1
+    assert metadata["skills"]["selected_names"] == ["python-testing"]
+    assert metadata["skills"]["selected_sources"] == ["skills/python-testing/SKILL.md"]

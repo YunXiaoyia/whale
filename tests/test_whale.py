@@ -1590,6 +1590,32 @@ def test_agent_records_model_cache_metadata_in_last_prompt_metadata(tmp_path):
     assert agent.last_prompt_metadata["prompt_cache_key"] == agent.last_prompt_metadata["prefix_hash"]
 
 
+def test_agent_traces_selected_skill_without_full_instruction_body(tmp_path):
+    skill_path = tmp_path / "skills" / "python-testing" / "SKILL.md"
+    skill_path.parent.mkdir(parents=True)
+    skill_path.write_text(
+        "---\ndescription: Run focused tests.\ntriggers: pytest\n---\n"
+        "# Python testing\nUse pytest -q and never execute scripts from this file.\n",
+        encoding="utf-8",
+    )
+    agent = build_agent(tmp_path, ["<final>Done.</final>"])
+
+    assert agent.ask("Use pytest for this task") == "Done."
+
+    assert agent.last_prompt_metadata["skills"]["selected_names"] == ["python-testing"]
+    assert "Selected skills:" in agent.model_client.prompts[0]
+    trace_events = [
+        json.loads(line)
+        for line in agent.run_store.trace_path(agent.current_task_state).read_text(encoding="utf-8").splitlines()
+    ]
+    skill_events = [event for event in trace_events if event["event"] == "skill_selected"]
+
+    assert skill_events
+    assert skill_events[0]["selected_names"] == ["python-testing"]
+    assert skill_events[0]["selected_sources"] == ["skills/python-testing/SKILL.md"]
+    assert "Use pytest -q" not in json.dumps(skill_events[0])
+
+
 def test_recent_transcript_entries_stay_richer_than_older_ones(tmp_path):
     agent = build_agent(tmp_path, ["<final>Done.</final>"])
     old_text = "OLD-" + ("A" * 320)

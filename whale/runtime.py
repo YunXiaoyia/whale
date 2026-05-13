@@ -19,6 +19,7 @@ from . import memory as memorylib
 from .config import DEFAULT_TOOL_CONFIG, DEFAULT_WHALE_CONFIG
 from .context_manager import ContextManager
 from .run_store import RunStore
+from . import skills as skilllib
 from .task_state import TaskState
 from . import tools as toolkit
 from .workspace import IGNORED_PATH_NAMES, MAX_HISTORY, WorkspaceContext, clip, now
@@ -129,6 +130,14 @@ class Whale:
             workspace_root=self.root,
         )
         self.session["memory"] = self.memory.to_dict()
+        self.skill_manifests = skilllib.discover_skills(self.root, config=self.config.skills)
+        self.selected_skills = []
+        self.last_skill_metadata = {
+            "discovered_count": len(self.skill_manifests),
+            "selected_count": 0,
+            "selected_names": [],
+            "selected_sources": [],
+        }
         self.tools = self.build_tools()
         self.prefix_state = self.build_prefix()
         self.prefix = self.prefix_state.text
@@ -838,6 +847,16 @@ class Whale:
                     "duration_ms": int((time.monotonic() - prompt_started_at) * 1000),
                 },
             )
+            if self.last_skill_metadata.get("selected_count"):
+                self.emit_trace(
+                    task_state,
+                    "skill_selected",
+                    {
+                        "selected_count": int(self.last_skill_metadata.get("selected_count", 0)),
+                        "selected_names": list(self.last_skill_metadata.get("selected_names", [])),
+                        "selected_sources": list(self.last_skill_metadata.get("selected_sources", [])),
+                    },
+                )
             if self.config.context.trace_resume_boundary:
                 self.emit_trace(
                     task_state,

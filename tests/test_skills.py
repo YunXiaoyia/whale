@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from whale.config import SkillConfig
-from whale.skills import discover_skills, parse_skill_file
+from whale.skills import discover_skills, parse_skill_file, render_selected_skills, select_skills
 
 
 def write_skill(path, body):
@@ -84,3 +84,40 @@ def test_skill_instructions_are_clipped_by_config(tmp_path):
     assert manifest.instructions.startswith("# Tiny")
     assert "[truncated" in manifest.instructions
     assert "A" * 30 not in manifest.instructions
+
+
+def test_select_skills_prefers_explicit_mentions_then_triggers_then_defaults(tmp_path):
+    repo = tmp_path / "repo"
+    explicit = write_skill(repo / "skills" / "explicit" / "SKILL.md", "# Explicit\n")
+    triggered = write_skill(repo / "skills" / "python-testing" / "SKILL.md", "---\ntriggers: pytest\n---\n# Pytest\n")
+    default = write_skill(repo / "skills" / "repo-default" / "SKILL.md", "# Default\n")
+    disabled = write_skill(repo / "skills" / "disabled" / "SKILL.md", "---\nenabled: false\ntriggers: pytest\n---\n# Disabled\n")
+    del explicit, triggered, default, disabled
+    manifests = discover_skills(repo)
+
+    selected = select_skills(
+        manifests,
+        "Use $explicit and pytest",
+        config=SkillConfig(default_skills=("repo-default",), max_selected=3),
+    )
+
+    assert [manifest.name for manifest in selected] == ["explicit", "python-testing", "repo-default"]
+
+
+def test_render_selected_skills_uses_relative_sources_and_instruction_budget(tmp_path):
+    repo = tmp_path / "repo"
+    write_skill(repo / "skills" / "python-testing" / "SKILL.md", "# Python testing\n" + ("A" * 120))
+    manifest = discover_skills(repo)[0]
+
+    rendered, metadata = render_selected_skills(
+        [manifest],
+        workspace_root=repo,
+        config=SkillConfig(selected_instruction_char_budget=40),
+    )
+
+    assert rendered.startswith("Selected skills:")
+    assert "python-testing" in rendered
+    assert "Source: skills/python-testing/SKILL.md" in rendered
+    assert "[truncated" in rendered
+    assert metadata["selected_names"] == ["python-testing"]
+    assert metadata["selected_sources"] == ["skills/python-testing/SKILL.md"]

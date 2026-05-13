@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass
 
 from .config import DEFAULT_CONTEXT_CONFIG
+from . import skills as skilllib
 
 
 DEFAULT_TOTAL_BUDGET = DEFAULT_CONTEXT_CONFIG.total_budget
@@ -109,6 +110,33 @@ class ContextManager:
             "history": "",
             CURRENT_REQUEST_SECTION: f"Current user request:\n{user_message}",
         }
+        selected_skills = []
+        skill_metadata = {
+            "discovered_count": len(getattr(self.agent, "skill_manifests", [])),
+            "selected_count": 0,
+            "selected_names": [],
+            "selected_sources": [],
+            "rendered_chars": 0,
+            "instruction_budget": int(getattr(getattr(self.agent, "config", None), "skills", None).selected_instruction_char_budget)
+            if getattr(getattr(self.agent, "config", None), "skills", None)
+            else 0,
+        }
+        if hasattr(self.agent, "skill_manifests"):
+            selected_skills = skilllib.select_skills(
+                self.agent.skill_manifests,
+                user_message,
+                config=getattr(self.agent.config, "skills", None),
+            )
+            skills_text, skill_metadata = skilllib.render_selected_skills(
+                selected_skills,
+                workspace_root=getattr(self.agent, "root", "."),
+                config=getattr(self.agent.config, "skills", None),
+            )
+            skill_metadata["discovered_count"] = len(self.agent.skill_manifests)
+            if skills_text:
+                section_texts["prefix"] = section_texts["prefix"] + "\n\n" + skills_text
+            self.agent.selected_skills = selected_skills
+            self.agent.last_skill_metadata = dict(skill_metadata)
         checkpoint_text = ""
         if hasattr(self.agent, "render_checkpoint_text"):
             checkpoint_text = str(self.agent.render_checkpoint_text() or "").strip()
@@ -130,6 +158,7 @@ class ContextManager:
                 user_message=user_message,
                 section_texts=section_texts,
                 context_reduction_enabled=context_reduction_enabled,
+                skill_metadata=skill_metadata,
             )
             return prompt, metadata
 
@@ -178,6 +207,7 @@ class ContextManager:
             user_message=user_message,
             section_texts=section_texts,
             context_reduction_enabled=context_reduction_enabled,
+            skill_metadata=skill_metadata,
         )
         return prompt, metadata
 
@@ -466,6 +496,7 @@ class ContextManager:
         user_message,
         section_texts,
         context_reduction_enabled,
+        skill_metadata,
     ):
         section_metadata = {}
         for section in SECTION_ORDER[:-1]:
@@ -487,6 +518,7 @@ class ContextManager:
             "budget_profile": self.config.budget_profile,
             "context_reduction_enabled": bool(context_reduction_enabled),
             "skill_instruction_budget": int(self.config.skill_instruction_budget),
+            "skills": dict(skill_metadata),
             "section_order": list(SECTION_ORDER),
             "section_budgets": {
                 section: (None if section == CURRENT_REQUEST_SECTION else int(budgets.get(section, 0)))

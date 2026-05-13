@@ -45,6 +45,74 @@ def discover_skills(repo_root, home_root=None, config=None):
     return manifests
 
 
+def select_skills(manifests, user_message, config=None):
+    config = config or DEFAULT_SKILL_CONFIG
+    if not config.enabled:
+        return []
+    enabled = [manifest for manifest in manifests if manifest.enabled]
+    by_name = {manifest.name: manifest for manifest in enabled}
+    selected = []
+    selected_names = set()
+
+    for name in _explicit_skill_mentions(user_message):
+        manifest = by_name.get(name)
+        if manifest is not None and name not in selected_names:
+            selected.append(manifest)
+            selected_names.add(name)
+
+    message_lower = str(user_message or "").lower()
+    for manifest in enabled:
+        if manifest.name in selected_names:
+            continue
+        triggers = [trigger.lower() for trigger in manifest.triggers if trigger]
+        if any(trigger in message_lower for trigger in triggers):
+            selected.append(manifest)
+            selected_names.add(manifest.name)
+
+    for name in config.default_skills:
+        manifest = by_name.get(str(name))
+        if manifest is not None and manifest.name not in selected_names:
+            selected.append(manifest)
+            selected_names.add(manifest.name)
+
+    return selected[: int(config.max_selected)]
+
+
+def render_selected_skills(manifests, workspace_root, config=None):
+    config = config or DEFAULT_SKILL_CONFIG
+    manifests = list(manifests)
+    if not manifests:
+        return "", {
+            "selected_count": 0,
+            "selected_names": [],
+            "selected_sources": [],
+            "rendered_chars": 0,
+            "instruction_budget": int(config.selected_instruction_char_budget),
+        }
+    budget = int(config.selected_instruction_char_budget)
+    per_skill_budget = max(1, budget // len(manifests))
+    lines = ["Selected skills:"]
+    names = []
+    sources = []
+    for manifest in manifests:
+        names.append(manifest.name)
+        source = _relative_source(manifest.source_path, workspace_root)
+        sources.append(source)
+        lines.append(f"- {manifest.name}: {manifest.description or '-'}")
+        lines.append(f"  Source: {source}")
+        lines.append("  Instructions:")
+        for instruction_line in clip(manifest.instructions, per_skill_budget).splitlines():
+            lines.append(f"  {instruction_line}")
+    rendered = "\n".join(lines)
+    return rendered, {
+        "selected_count": len(manifests),
+        "selected_names": names,
+        "selected_sources": sources,
+        "rendered_chars": len(rendered),
+        "instruction_budget": budget,
+    }
+
+
 def discover_skills_in_root(root, scope, config=None):
     config = config or DEFAULT_SKILL_CONFIG
     root = Path(root).resolve()
@@ -159,3 +227,15 @@ def _parse_triggers(value):
 
 def _parse_bool(value):
     return str(value).strip().lower() not in {"0", "false", "no", "off", "disabled"}
+
+
+def _explicit_skill_mentions(text):
+    return re.findall(r"\$([A-Za-z0-9][A-Za-z0-9_-]{0,63})", str(text or ""))
+
+
+def _relative_source(path, workspace_root):
+    path = Path(path)
+    try:
+        return path.resolve().relative_to(Path(workspace_root).resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()

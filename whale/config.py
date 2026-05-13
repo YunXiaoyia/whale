@@ -138,6 +138,9 @@ class SkillConfig:
     filename: str = "SKILL.md"
     instruction_char_limit: int = 4000
     max_discovered: int = 64
+    max_selected: int = 3
+    selected_instruction_char_budget: int = 1200
+    default_skills: tuple[str, ...] = ()
     name_pattern: str = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
 
 
