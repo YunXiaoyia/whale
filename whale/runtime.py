@@ -154,6 +154,7 @@ class Whale:
         self.last_durable_superseded = []
         self._last_tool_result_metadata = {}
         self.tool_policy = ToolPolicy()
+        self._pending_tool_policy_decision = None
         self._last_prefix_refresh = {
             "workspace_changed": False,
             "prefix_changed": False,
@@ -956,8 +957,22 @@ class Whale:
                 name = payload.get("name", "")
                 args = payload.get("args", {})
                 task_state.record_tool(name)
+                decision = self.tool_policy.evaluate(self, name, args)
+                self._pending_tool_policy_decision = decision
+                self.emit_trace(
+                    task_state,
+                    "tool_policy_evaluated",
+                    {
+                        "name": name,
+                        "args": args,
+                        **decision.metadata(),
+                    },
+                )
                 tool_started_at = time.monotonic()
-                result = self.run_tool(name, args)
+                try:
+                    result = self.run_tool(name, args)
+                finally:
+                    self._pending_tool_policy_decision = None
                 self.record(
                     {
                         "role": "tool",
@@ -1077,7 +1092,7 @@ class Whale:
         # 工具是否存在 -> 参数是否合法 -> 是否重复调用 -> 是否通过审批
         # -> 真正执行 -> 更新记忆。
         tool = self.tools.get(name)
-        decision = self.tool_policy.evaluate(self, name, args)
+        decision = self._pending_tool_policy_decision or self.tool_policy.evaluate(self, name, args)
         if not decision.allowed:
             self._last_tool_result_metadata = decision.metadata()
             return decision.message

@@ -1188,8 +1188,16 @@ def test_write_file_trace_records_minimum_tool_contract_fields(tmp_path):
         json.loads(line)
         for line in agent.run_store.trace_path(agent.current_task_state).read_text(encoding="utf-8").splitlines()
     ]
+    trace_event_names = [event["event"] for event in trace_events]
+    assert trace_event_names.index("tool_policy_evaluated") < trace_event_names.index("tool_executed")
+    policy_event = [event for event in trace_events if event["event"] == "tool_policy_evaluated"][-1]
     tool_event = [event for event in trace_events if event["event"] == "tool_executed"][-1]
 
+    assert policy_event["name"] == "write_file"
+    assert policy_event["tool_name"] == "write_file"
+    assert policy_event["risk_level"] == "high"
+    assert policy_event["approval_decision"] == "allow"
+    assert policy_event["read_only"] is False
     assert tool_event["name"] == "write_file"
     assert tool_event["risk_level"] == "high"
     assert tool_event["read_only"] is False
@@ -1197,6 +1205,32 @@ def test_write_file_trace_records_minimum_tool_contract_fields(tmp_path):
     assert tool_event["affected_paths"] == ["notes.txt"]
     assert tool_event["workspace_changed"] is True
     assert tool_event["diff_summary"] == ["created:notes.txt"]
+
+
+def test_tool_policy_trace_records_approval_denial_without_changing_result(tmp_path):
+    agent = build_agent(
+        tmp_path,
+        [
+            '<tool>{"name":"run_shell","args":{"command":"echo hi","timeout":20}}</tool>',
+            "<final>Done.</final>",
+        ],
+        approval_policy="never",
+    )
+
+    assert agent.ask("Try shell") == "Done."
+
+    trace_events = [
+        json.loads(line)
+        for line in agent.run_store.trace_path(agent.current_task_state).read_text(encoding="utf-8").splitlines()
+    ]
+    policy_event = [event for event in trace_events if event["event"] == "tool_policy_evaluated"][-1]
+    tool_event = [event for event in trace_events if event["event"] == "tool_executed"][-1]
+
+    assert policy_event["approval_decision"] == "deny"
+    assert policy_event["tool_error_code"] == "approval_denied"
+    assert policy_event["security_event_type"] == "approval_denied"
+    assert tool_event["result"] == "error: approval denied for run_shell"
+    assert tool_event["tool_error_code"] == "approval_denied"
 
 
 def test_resume_marks_schema_mismatch_when_checkpoint_version_is_incompatible(tmp_path):

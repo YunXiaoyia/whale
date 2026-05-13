@@ -19,6 +19,8 @@ class ToolPolicyDecision:
 
     def metadata(self):
         return {
+            "tool_name": self.tool_name,
+            "approval_decision": "allow" if self.allowed else "deny",
             "tool_status": self.tool_status,
             "tool_error_code": self.tool_error_code,
             "security_event_type": self.security_event_type,
