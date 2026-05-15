@@ -53,6 +53,41 @@ def test_agent_runs_tool_then_final(tmp_path):
     assert "hello.txt" in agent.session["memory"]["files"]
 
 
+def test_agent_reports_model_thinking_status_around_completion(tmp_path):
+    events = []
+    agent = build_agent(tmp_path, ["<final>Done.</final>"])
+    agent.status_callback = events.append
+
+    assert agent.ask("Do the task") == "Done."
+
+    assert events == ["模型思考中", ""]
+
+
+def test_repl_slash_commands_do_not_fall_through_to_model(tmp_path, capsys):
+    agent = build_agent(tmp_path, ["<final>Done.</final>"])
+    agent.memory.set_task_summary("remembered task")
+
+    handled, should_exit = whale_pkg.handle_repl_command(agent, " /memory ")
+    assert handled is True
+    assert should_exit is False
+    captured = capsys.readouterr()
+    assert "remembered task" in captured.out
+    assert agent.model_client.prompts == []
+
+    handled, should_exit = whale_pkg.handle_repl_command(agent, "/bogus")
+    assert handled is True
+    assert should_exit is False
+    captured = capsys.readouterr()
+    assert "unknown command" in captured.out
+    assert agent.model_client.prompts == []
+
+
+def test_slash_command_completion_suggests_known_commands():
+    assert whale_pkg.slash_command_completer("/m", 0) == "/memory"
+    assert whale_pkg.slash_command_completer("/m", 1) is None
+    assert whale_pkg.split_repl_command("  /reset   now ") == ("/reset", "now")
+
+
 def test_agent_updates_task_summary_on_each_request(tmp_path):
     agent = build_agent(
         tmp_path,
@@ -332,7 +367,9 @@ def test_welcome_screen_keeps_box_shape_for_long_paths(tmp_path):
     assert len(lines) >= 5
     assert len({len(line) for line in lines}) == 1
     assert "..." in welcome
-    assert "(  o o  )" in welcome
+    assert ".--'  o    o '--." in welcome
+    assert "'--._______.--'" in welcome
+    assert "(  o o  )" not in welcome
     assert "MINI-CODING-AGENT" not in welcome
     assert "MINI CODING AGENT" not in welcome
     assert "whale" in welcome
@@ -341,6 +378,31 @@ def test_welcome_screen_keeps_box_shape_for_long_paths(tmp_path):
     assert "SLASH" not in welcome
     assert "READY      " not in welcome
     assert "commands: Commands:" not in welcome
+
+
+def test_thinking_status_line_renders_and_clears():
+    class Stream:
+        def __init__(self):
+            self.parts = []
+
+        def write(self, text):
+            self.parts.append(text)
+
+        def flush(self):
+            pass
+
+        def isatty(self):
+            return True
+
+    stream = Stream()
+    status = whale_pkg.ThinkingStatusLine(stream=stream, interval=60, enabled=True)
+
+    status("模型思考中")
+    status("")
+
+    rendered = "".join(stream.parts)
+    assert "模型思考中 0s" in rendered
+    assert rendered.endswith("\r")
 
 
 def test_ollama_client_posts_expected_payload():
@@ -1768,3 +1830,17 @@ def test_module_execution_help_works():
 
     assert result.returncode == 0
     assert "usage:" in result.stdout.lower()
+
+
+def test_main_rejects_interactive_mode_without_tty(monkeypatch, capsys):
+    class FakeStdin:
+        def isatty(self):
+            return False
+
+    monkeypatch.setattr(sys, "stdin", FakeStdin())
+
+    assert whale_pkg.main([]) == 2
+
+    captured = capsys.readouterr()
+    assert "interactive mode requires a TTY" in captured.err
+    assert "pass a prompt for one-shot mode" in captured.err

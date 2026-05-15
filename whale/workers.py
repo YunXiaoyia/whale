@@ -100,6 +100,7 @@ class WorkerManager:
             read_only=spec.read_only,
             secret_env_names=self.parent_agent.secret_env_names,
             shell_env_allowlist=self.parent_agent.shell_env_allowlist,
+            status_callback=getattr(self.parent_agent, "status_callback", None),
         )
 
     @staticmethod

@@ -10,6 +10,8 @@ import os
 import shutil
 import sys
 import textwrap
+import threading
+import time
 
 from .config import DEFAULT_PROVIDER_PROFILES, DEFAULT_WHALE_CONFIG, load_project_env, provider_env
 from .models import AnthropicCompatibleModelClient, OllamaModelClient, OpenAICompatibleModelClient
@@ -32,10 +34,12 @@ DEFAULT_SECRET_ENV_NAMES = (
 )
 
 WELCOME_ART = (
-    "        /\\___/\\\\",
-    "       (  o o  )",
-    "       /   ^   \\\\",
-    "      /|       |\\\\",
+    "          .-''''-.",
+    "     .--'  o    o '--.",
+    "    /  ___        ___  \\__",
+    "   |  /   \\______/   \\    )",
+    "    \\_\\              /_..-'",
+    "       '--._______.--'",
 )
 WELCOME_NAME = "whale"
 WELCOME_SUBTITLE = "local coding agent"
@@ -50,6 +54,148 @@ HELP_DETAILS = textwrap.dedent(
     /exit    Exit the agent.
     """
 ).strip()
+SLASH_COMMANDS = ("/help", "/memory", "/session", "/reset", "/exit", "/quit")
+
+
+class ThinkingStatusLine:
+    def __init__(self, stream=None, interval=1.0, enabled=None):
+        self.stream = stream or sys.stderr
+        if enabled is None:
+            enabled = bool(getattr(self.stream, "isatty", lambda: False)())
+        self.enabled = bool(enabled)
+        self.interval = float(interval)
+        self._lock = threading.Lock()
+        self._thread = None
+        self._stop_event = None
+        self._label = ""
+        self._started_at = 0.0
+        self._render_width = 0
+        self._active = False
+
+    def __call__(self, message):
+        if not self.enabled:
+            return
+        if message:
+            self.start(str(message))
+        else:
+            self.stop()
+
+    def start(self, label):
+        with self._lock:
+            if self._active:
+                self._label = str(label)
+                self._render(int(time.monotonic() - self._started_at))
+                return
+            self._active = True
+            self._label = str(label)
+            self._started_at = time.monotonic()
+            self._stop_event = threading.Event()
+            self._render(0)
+            self._thread = threading.Thread(target=self._run, daemon=True)
+            self._thread.start()
+
+    def stop(self):
+        with self._lock:
+            if not self._active:
+                return
+            stop_event = self._stop_event
+            thread = self._thread
+            self._active = False
+            self._stop_event = None
+            self._thread = None
+        if stop_event is not None:
+            stop_event.set()
+        if thread is not None:
+            thread.join(timeout=max(self.interval * 2, 0.1))
+        self._clear()
+
+    def _run(self):
+        while True:
+            stop_event = self._stop_event
+            if stop_event is None:
+                return
+            if stop_event.wait(self.interval):
+                return
+            self._render(int(time.monotonic() - self._started_at))
+
+    def _render(self, elapsed):
+        text = f"{self._label} {elapsed}s"
+        width = max(self._render_width, len(text))
+        self._render_width = width
+        self._write("\r" + text.ljust(width))
+
+    def _clear(self):
+        if self._render_width:
+            self._write("\r" + (" " * self._render_width) + "\r")
+        else:
+            self._write("\r")
+        self._render_width = 0
+
+    def _write(self, text):
+        self.stream.write(text)
+        flush = getattr(self.stream, "flush", None)
+        if callable(flush):
+            flush()
+
+
+def split_repl_command(user_input):
+    text = str(user_input or "").strip()
+    if not text.startswith("/"):
+        return "", ""
+    parts = text.split(maxsplit=1)
+    command = parts[0].lower()
+    args = parts[1] if len(parts) > 1 else ""
+    return command, args
+
+
+def slash_command_completer(text, state):
+    needle = str(text or "")
+    matches = [command for command in SLASH_COMMANDS if command.startswith(needle)]
+    try:
+        return matches[state]
+    except IndexError:
+        return None
+
+
+def install_repl_completion():
+    try:
+        import readline
+    except ImportError:
+        return False
+
+    def complete(text, state):
+        buffer = readline.get_line_buffer()
+        if buffer.lstrip() and not buffer.lstrip().startswith("/"):
+            return None
+        return slash_command_completer(text, state)
+
+    readline.set_completer(complete)
+    readline.parse_and_bind("tab: complete")
+    return True
+
+
+def handle_repl_command(agent, user_input):
+    command, _args = split_repl_command(user_input)
+    if not command:
+        return False, False
+    if command in {"/exit", "/quit"}:
+        return True, True
+    if command == "/help":
+        print(HELP_DETAILS)
+        return True, False
+    if command == "/memory":
+        print(agent.memory_text())
+        return True, False
+    if command == "/session":
+        print(agent.session_path)
+        return True, False
+    if command == "/reset":
+        agent.reset()
+        print("session reset")
+        return True, False
+
+    print(f"unknown command: {command}. Type /help for available commands.")
+    return True, False
 
 
 DEFAULT_OLLAMA_MODEL = DEFAULT_PROVIDER_PROFILES["ollama"].default_model
@@ -229,7 +375,7 @@ def build_agent(args):
     if session_id == "latest":
         session_id = store.latest()
     if session_id:
-        return Whale.from_session(
+        agent = Whale.from_session(
             model_client=model,
             workspace=workspace,
             session_store=store,
@@ -239,15 +385,18 @@ def build_agent(args):
             max_new_tokens=args.max_new_tokens,
             secret_env_names=configured_secret_names,
         )
-    return Whale(
-        model_client=model,
-        workspace=workspace,
-        session_store=store,
-        approval_policy=args.approval,
-        max_steps=args.max_steps,
-        max_new_tokens=args.max_new_tokens,
-        secret_env_names=configured_secret_names,
-    )
+    else:
+        agent = Whale(
+            model_client=model,
+            workspace=workspace,
+            session_store=store,
+            approval_policy=args.approval,
+            max_steps=args.max_steps,
+            max_new_tokens=args.max_new_tokens,
+            secret_env_names=configured_secret_names,
+        )
+    agent.status_callback = ThinkingStatusLine()
+    return agent
 
 
 def build_arg_parser():
@@ -285,6 +434,14 @@ def build_arg_parser():
 
 def main(argv=None):
     args = build_arg_parser().parse_args(argv)
+    if not args.prompt and not sys.stdin.isatty():
+        print(
+            "error: interactive mode requires a TTY. Activate the Conda environment and run "
+            "`whale ...`, or pass a prompt for one-shot mode.",
+            file=sys.stderr,
+        )
+        return 2
+
     agent = build_agent(args)
 
     model = getattr(agent.model_client, "model", getattr(args, "model", DEFAULT_OLLAMA_MODEL))
@@ -303,6 +460,7 @@ def main(argv=None):
                 return 1
         return 0
 
+    install_repl_completion()
     while True:
         # 交互模式：每次读取一条用户输入，交给同一个 agent，
         # 因此 session history 和 working memory 会跨轮延续。
@@ -314,20 +472,10 @@ def main(argv=None):
 
         if not user_input:
             continue
-        if user_input in {"/exit", "/quit"}:
+        handled, should_exit = handle_repl_command(agent, user_input)
+        if should_exit:
             return 0
-        if user_input == "/help":
-            print(HELP_DETAILS)
-            continue
-        if user_input == "/memory":
-            print(agent.memory_text())
-            continue
-        if user_input == "/session":
-            print(agent.session_path)
-            continue
-        if user_input == "/reset":
-            agent.reset()
-            print("session reset")
+        if handled:
             continue
 
         print()

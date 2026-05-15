@@ -101,9 +101,11 @@ class Whale:
         secret_env_names=None,
         feature_flags=None,
         config=None,
+        status_callback=None,
     ):
         self.config = config or DEFAULT_WHALE_CONFIG
         self.model_client = model_client
+        self.status_callback = status_callback
         self.workspace = workspace
         self.root = Path(workspace.repo_root)
         self.session_store = session_store
@@ -161,6 +163,11 @@ class Whale:
             "workspace_changed": False,
             "prefix_changed": False,
         }
+
+    def report_status(self, message):
+        callback = getattr(self, "status_callback", None)
+        if callable(callback):
+            callback(message)
 
     @classmethod
     def from_session(cls, model_client, workspace, session_store, session_id, **kwargs):
@@ -934,12 +941,16 @@ class Whale:
                 prompt_cache_key = prompt_metadata.get("prompt_cache_key")
                 prompt_cache_retention = "in_memory"
             model_started_at = time.monotonic()
-            raw = self.model_client.complete(
-                prompt,
-                self.max_new_tokens,
-                prompt_cache_key=prompt_cache_key,
-                prompt_cache_retention=prompt_cache_retention,
-            )
+            self.report_status("模型思考中")
+            try:
+                raw = self.model_client.complete(
+                    prompt,
+                    self.max_new_tokens,
+                    prompt_cache_key=prompt_cache_key,
+                    prompt_cache_retention=prompt_cache_retention,
+                )
+            finally:
+                self.report_status("")
             completion_metadata = dict(getattr(self.model_client, "last_completion_metadata", {}) or {})
             if completion_metadata:
                 # 把后端返回的 usage/cache 统计并回 prompt_metadata，
