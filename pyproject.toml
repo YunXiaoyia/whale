@@ -11,6 +11,7 @@ dependencies = []
 
 [project.scripts]
 whale = "whale.cli:main"
+whale-harness = "whale.harness_cli:main"
 
 [dependency-groups]
 dev = [

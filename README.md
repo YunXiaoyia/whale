@@ -236,6 +236,35 @@ summary = store.load_run_summary(runs[0]["run_id"])
 
 制品契约见 `docs/architecture/run-session-schema.md`。
 
+## Agent Harness
+
+Whale 提供 public harness API，用于把现有 runtime 和 deterministic benchmark 能力接入外部脚本或评测系统。
+
+Runtime harness 包装已构造好的 `Whale` 实例，并返回 JSON-ready 的运行摘要：
+
+```python
+from whale import RuntimeHarness
+
+result = RuntimeHarness(agent).run("检查这个仓库", run_id="run_demo")
+payload = result.to_dict()
+```
+
+Evaluation harness 复用内置 deterministic benchmark evaluator，默认写入 `artifacts/harness-regression-v2.json`：
+
+```python
+from whale import EvaluationHarness
+
+artifact = EvaluationHarness().run()
+```
+
+安装项目后也可以使用 `whale-harness`：
+
+```bash
+conda activate whale
+whale-harness run --provider deepseek --approval auto "检查这个仓库"
+whale-harness eval --artifact-path artifacts/harness-regression-v2.json
+```
+
 ## 技能
 
 Whale 会从以下位置发现只作为 Prompt 指令使用的技能：

@@ -9,3 +9,5 @@ The task state records the current run id, request, status, attempts, tool steps
 The harness keeps side effects behind explicit tools. Risky tools require approval policy checks, and file paths are constrained to the workspace root.
 
 Run/session artifacts are part of the v1 contract. Their current on-disk schema, V0 compatibility expectations, checkpoint shape, and session memory layout are documented in [Run And Session Artifact Schema](run-session-schema.md).
+
+Implementation progress and handoff status are tracked in [Agent Harness V1 Implementation Status](agent-harness-v1-implementation-status.md).
