@@ -53,8 +53,6 @@ artifacts/
 readme_intro_locked/
 docs/metrics/
 docs/architecture
-!docs/architecture/
-!docs/architecture/agent-harness-v1-implementation-status.md
 # Local Git metadata workaround
 .git-data/
 
