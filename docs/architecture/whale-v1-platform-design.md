@@ -1,62 +1,62 @@
-# Whale V1 Platform Design
+# Whale V1 平台设计
 
-## Summary
+## 概要
 
-Whale V1 keeps the current command-line user experience and `.whale/` storage layout while turning the runtime into a clearer platform boundary. The goal is not to add a second agent system beside the current one. The goal is to formalize the capabilities already present in `Whale.ask()`, `ContextManager`, `RunStore`, `tools.py`, provider clients, delegation, and memory into stable subsystems that can be extended without making the control loop harder to reason about.
+Whale V1 保留现有的命令行用户体验和 `.whale/` 存储布局，同时把运行时收束成更清晰的平台边界。目标不是在当前系统旁边再加一套第二代理系统。目标是把已经存在于 `Whale.ask()`、`ContextManager`、`RunStore`、`tools.py`、provider 客户端、delegation 和 memory 里的能力，正式化为稳定的子系统，这样后续扩展时不会让控制循环更难理解。
 
-V1 should remain compatible with:
+V1 应继续兼容以下内容：
 
-- The `whale` CLI and `python -m whale` entrypoints.
-- Existing `WHALE_*` provider environment variables.
-- Existing `.whale/sessions/` and `.whale/runs/<run_id>/` directories.
-- Existing run artifacts: `task_state.json`, `trace.jsonl`, and `report.json`.
-- The existing `FakeModelClient`-based tests that validate behavior without real providers.
+- `whale` CLI 和 `python -m whale` 入口。
+- 现有的 `WHALE_*` provider 环境变量。
+- 现有的 `.whale/sessions/` 和 `.whale/runs/<run_id>/` 目录。
+- 现有 run 制品：`task_state.json`、`trace.jsonl` 和 `report.json`。
+- 用 `FakeModelClient` 的现有测试，它们在没有真实 provider 的情况下验证行为。
 
-## Current Baseline
+## 当前基线
 
-Whale already has the first version of most requested capabilities:
+Whale 已经具备第一版的大部分所需能力：
 
-- Task run records: `RunStore`, `TaskState`, trace events, reports, checkpoints.
-- Context governance: `ContextManager` with section budgets, reduction order, and prompt metadata.
-- Tool safety: explicit tool registry, path sandboxing, approval modes, secret redaction, allowlisted shell environment.
-- Multi-provider support: Ollama, OpenAI-compatible, Anthropic-compatible, and DeepSeek-compatible clients.
-- Worker behavior: `delegate` creates a bounded read-only child agent.
-- Memory: working memory, file summaries, episodic notes, durable topics, freshness invalidation, and promotion rules.
+- 任务运行记录：`RunStore`、`TaskState`、trace 事件、报告、checkpoint。
+- 上下文治理：`ContextManager`，包含 section budget、裁剪顺序和 prompt 元数据。
+- 工具安全：显式工具注册、路径沙箱、审批模式、密文脱敏、allowlist shell 环境。
+- 多 provider 支持：Ollama、OpenAI-compatible、Anthropic-compatible 和 DeepSeek-compatible 客户端。
+- Worker 行为：`delegate` 创建一个受边界约束的只读子代理。
+- Memory：working memory、文件摘要、episodic notes、durable topics、新鲜度失效和晋升规则。
 
-The main V1 gaps are:
+V1 的主要缺口是：
 
-- These capabilities are configured indirectly through constructor arguments and constants.
-- Run records do not expose a single schema contract.
-- Tool policy is mixed into `Whale.run_tool()`.
-- Provider configuration is spread between CLI defaults, environment variables, and model client setup.
-- Delegation is a tool implementation rather than a worker-management subsystem.
-- Skill discovery does not exist yet.
+- 这些能力主要通过构造参数和常量间接配置。
+- run 记录没有单一的 schema 合约。
+- 工具 policy 和 `Whale.run_tool()` 混在一起。
+- provider 配置分散在 CLI 默认值、环境变量和 model client 初始化里。
+- delegation 是一个工具实现，而不是 worker 管理子系统。
+- skill 发现还不存在。
 
-## Design Principles
+## 设计原则
 
-- Compatibility first: existing CLI commands, local artifacts, and tests remain valid.
-- Safety by default: no new feature should expand tool authority unless explicitly configured.
-- Text before code execution: skills are prompt instructions in V1, not executable plugins.
-- Observability everywhere: each major subsystem emits trace/report metadata.
-- Small interfaces: add stable data contracts before adding advanced behavior.
-- Deterministic tests: all new behavior must be testable with fake clients and local fixtures.
+- 兼容优先：现有 CLI 命令、本地制品和测试保持有效。
+- 默认安全：任何新特性都不应在未显式配置的情况下扩大工具权限。
+- 先文本，后执行：V1 里的 skill 是 prompt 指令，不是可执行插件。
+- 处处可观测：每个主要子系统都会发出 trace/report 元数据。
+- 小接口：先加入稳定的数据契约，再加入高级行为。
+- 确定性测试：所有新行为都应能用 fake client 和本地 fixture 测试。
 
-## Runtime And Run Records
+## 运行时和 Run 记录
 
-The runtime should keep `Whale.ask()` as the main public execution method, but V1 should treat each request as a structured run.
+运行时应继续把 `Whale.ask()` 作为主要公开执行方法，但 V1 会把每次请求视为一次结构化 run。
 
-### Responsibilities
+### 职责
 
-- `SessionStore` stores recoverable conversation state.
-- `RunStore` stores audit artifacts for one user request.
-- `TaskState` stores current execution status.
-- Checkpoints store resumability hints and runtime identity.
-- Trace events store the step-by-step timeline.
-- Reports store final summaries and metrics.
+- `SessionStore` 存储可恢复的会话状态。
+- `RunStore` 存储一次用户请求的审计制品。
+- `TaskState` 存储当前执行状态。
+- Checkpoint 存储可恢复性提示和运行时身份。
+- Trace 事件存储逐步时间线。
+- 报告存储最终摘要和指标。
 
-### V1 Contract
+### V1 合约
 
-Run artifacts stay in the current locations:
+Run 制品继续保留在当前位置：
 
 ```text
 .whale/
@@ -69,18 +69,18 @@ Run artifacts stay in the current locations:
       report.json
 ```
 
-Each artifact should include or preserve a schema version. Existing files without a version should be treated as V0-compatible input.
+每个制品都应该包含或保留 schema version。现有没有 version 的文件应视为 V0 兼容输入。
 
-Suggested stable record names:
+建议的稳定记录名称：
 
-- `RunRecord`: run id, task id, session id, workspace root, created timestamps, status, stop reason, artifact paths.
-- `TaskRecord`: user request, attempts, tool steps, last tool, final answer, checkpoint id, resume status.
-- `TraceEvent`: event name, created_at, payload, redaction state.
-- `RunReport`: final task state, prompt metadata, tool summary, memory summary, worker summary, provider metadata.
+- `RunRecord`：run id、task id、session id、workspace root、创建时间戳、状态、停止原因、制品路径。
+- `TaskRecord`：用户请求、尝试次数、工具步骤、最后一个工具、最终回答、checkpoint id、恢复状态。
+- `TraceEvent`：事件名、created_at、payload、脱敏状态。
+- `RunReport`：最终 task 状态、prompt 元数据、工具摘要、memory 摘要、worker 摘要、provider 元数据。
 
-### Trace Events
+### Trace 事件
 
-The existing events should remain valid:
+现有事件应继续有效：
 
 - `run_started`
 - `prompt_built`
@@ -90,7 +90,7 @@ The existing events should remain valid:
 - `checkpoint_created`
 - `run_finished`
 
-V1 can add these events:
+V1 可以新增这些事件：
 
 - `skill_selected`
 - `tool_policy_evaluated`
@@ -99,13 +99,13 @@ V1 can add these events:
 - `memory_promoted`
 - `provider_selected`
 
-## Context Governance
+## 上下文治理
 
-`ContextManager` should become the formal context policy layer. It already builds prompts from prefix, memory, relevant memory, history, and the current request.
+`ContextManager` 应成为正式的上下文 policy 层。它已经会从 prefix、memory、relevant memory、history 和当前请求构造 prompt。
 
 ### Sections
 
-V1 keeps the existing section order:
+V1 保持现有 section 顺序：
 
 ```text
 prefix
@@ -115,44 +115,44 @@ history
 current_request
 ```
 
-V1 can add optional skill content inside `prefix` or as a new `skills` section before `memory`. To preserve compatibility, the default should inject skills into `prefix` unless a new schema version is explicitly enabled.
+V1 可以在 `prefix` 中加入可选的 skill 内容，或者新增一个放在 `memory` 之前的 `skills` section。为了保持兼容性，默认应把 skill 注入到 `prefix` 中，除非显式启用新的 schema version。
 
 ### Policy
 
-The context policy should expose:
+上下文 policy 应暴露：
 
-- Total prompt budget.
-- Per-section budgets.
-- Per-section floors.
-- Reduction order.
-- Relevant memory limit.
-- Skill instruction budget.
-- Whether context reduction is enabled.
+- 总 prompt budget。
+- 每个 section 的 budget。
+- 每个 section 的 floor。
+- 裁剪顺序。
+- relevant memory 上限。
+- skill 指令 budget。
+- 是否启用上下文裁剪。
 
-### Metadata
+### 元数据
 
-Every prompt build should continue to report:
+每次 prompt 构建都应继续报告：
 
-- Raw and rendered chars per section.
-- Applied reductions.
-- Selected relevant memory notes.
-- Prompt cache key.
-- Workspace fingerprint.
-- Tool signature.
+- 每个 section 的原始字符数和渲染字符数。
+- 应用的裁剪。
+- 选中的相关 memory notes。
+- prompt cache key。
+- workspace fingerprint。
+- 工具签名。
 
-V1 should add:
+V1 还应增加：
 
-- Selected skill names and sources.
-- Context policy name.
-- Budget profile name.
+- 选中的 skill 名称和来源。
+- context policy 名称。
+- budget profile 名称。
 
 ## Skill System
 
-Skills are the largest new subsystem. V1 should keep them simple and safe: a skill is a local markdown instruction file, not executable code.
+Skill 是 V1 中最大的新增子系统。V1 应保持它简单而安全：skill 是本地 markdown 指令文件，不是可执行代码。
 
-### Discovery Paths
+### 发现路径
 
-Default discovery order:
+默认发现顺序：
 
 ```text
 <repo>/skills/
@@ -160,32 +160,32 @@ Default discovery order:
 ~/.whale/skills/
 ```
 
-Only files named `SKILL.md` are loaded in V1. Nested skill directories are allowed.
+V1 只加载名为 `SKILL.md` 的文件。允许嵌套的 skill 目录。
 
 ### Skill Manifest
 
-Each skill should be represented internally as `SkillManifest`:
+每个 skill 在内部都应表示为 `SkillManifest`：
 
-- `name`: stable skill id.
-- `description`: short user-facing summary.
-- `triggers`: words or phrases that make the skill relevant.
-- `source_path`: absolute path to the `SKILL.md`.
-- `scope`: `project` or `user`.
-- `instructions`: clipped markdown content.
-- `enabled`: boolean.
+- `name`：稳定的 skill id。
+- `description`：简短的用户可读摘要。
+- `triggers`：让该 skill 相关的词或短语。
+- `source_path`：`SKILL.md` 的绝对路径。
+- `scope`：`project` 或 `user`。
+- `instructions`：裁剪后的 markdown 内容。
+- `enabled`：布尔值。
 
-### Selection
+### 选择
 
-Skill selection should be deterministic:
+Skill 选择应是确定性的：
 
-- Match explicit skill mentions first, such as `$python-testing`.
-- Then match trigger words in the current user request.
-- Then include project-default skills if configured.
-- Limit selected skills by count and character budget.
+- 先匹配显式的 skill 提及，例如 `$python-testing`。
+- 再匹配当前用户请求中的 trigger 词。
+- 然后在配置了默认项时包含 project-default skills。
+- 根据数量和字符 budget 限制已选中的 skills。
 
-### Prompt Injection
+### Prompt 注入
 
-Selected skills should be rendered as concise instructions:
+选中的 skills 应渲染为简洁指令：
 
 ```text
 Selected skills:
@@ -195,28 +195,28 @@ Selected skills:
   <clipped body>
 ```
 
-V1 should not execute scripts referenced by skills. It only tells the model about available workflows.
+V1 不应执行 skill 引用的脚本。它只是向模型说明可用的工作流。
 
-### Safety
+### 安全
 
-- Skills outside discovery roots are ignored.
-- Skill content is clipped.
-- Skill names must be simple path-safe identifiers.
-- Trace events record skill selection, not full private skill content unless explicitly configured.
+- 跳过 discovery roots 之外的 skills。
+- 裁剪 skill 内容。
+- skill 名称必须是简单、适合路径的标识符。
+- trace 事件记录 skill 选择，但除非显式配置，否则不记录完整的私有 skill 内容。
 
-## Tool Safety Policy
+## 工具安全 policy
 
-The current tool model is a good base: explicit registry, schema validation, risky flag, approval mode, path sandboxing, and environment allowlist.
+当前工具模型已经是个不错的基础：显式注册、schema 验证、风险标志、审批模式、路径沙箱和环境 allowlist。
 
-V1 should separate policy decisions from tool execution without changing user behavior.
+V1 应在不改变用户行为的前提下，把 policy 决策和工具执行分离。
 
-### Tool Policy Fields
+### Tool Policy 字段
 
-Suggested `ToolPolicy` fields:
+建议的 `ToolPolicy` 字段：
 
 - `tool_name`
-- `risk_level`: `low`, `medium`, `high`
-- `approval`: `never`, `ask`, `auto`
+- `risk_level`：`low`、`medium`、`high`
+- `approval`：`never`、`ask`、`auto`
 - `read_only`
 - `allowed_paths`
 - `denied_paths`
@@ -225,35 +225,35 @@ Suggested `ToolPolicy` fields:
 - `max_output_chars`
 - `repeat_call_policy`
 
-### Default Policy
+### 默认 policy
 
-Preserve current behavior:
+保留当前行为：
 
-- `list_files`, `read_file`, `search`, and `delegate` are low-risk.
-- `run_shell`, `write_file`, and `patch_file` are high-risk.
-- `--approval ask` asks before high-risk tools.
-- `--approval auto` allows high-risk tools.
-- `--approval never` denies high-risk tools.
-- Read-only child agents cannot run risky tools.
+- `list_files`、`read_file`、`search` 和 `delegate` 风险较低。
+- `run_shell`、`write_file` 和 `patch_file` 风险较高。
+- `--approval ask` 在高风险工具前询问。
+- `--approval auto` 允许高风险工具。
+- `--approval never` 拒绝高风险工具。
+- 只读子代理不能运行危险工具。
 
-### Audit
+### 审计
 
-Each tool call should emit a `tool_policy_evaluated` event before execution, containing:
+每次工具调用在执行前都应发出一个 `tool_policy_evaluated` 事件，包含：
 
-- Tool name.
-- Risk level.
-- Approval decision.
-- Security event type.
-- Read-only state.
-- Affected path if known.
+- 工具名。
+- 风险级别。
+- 审批决定。
+- 安全事件类型。
+- 只读状态。
+- 已知的话，受影响路径。
 
-Existing `tool_executed` metadata remains the final execution result.
+现有的 `tool_executed` 元数据仍然作为最终执行结果保留。
 
-## Multi-Provider Configuration
+## 多 Provider 配置
 
-Provider setup currently lives mostly in `cli.py` and model client constructors. V1 should add a provider profile layer while preserving all existing environment variables.
+当前 provider 设置主要在 `cli.py` 和 model client 构造器里。V1 应加入一个 provider profile 层，同时保留所有现有环境变量。
 
-### Existing Providers
+### 现有 Provider
 
 - `ollama`
 - `openai`
@@ -262,7 +262,7 @@ Provider setup currently lives mostly in `cli.py` and model client constructors.
 
 ### Provider Profile
 
-Suggested `ProviderProfile` fields:
+建议的 `ProviderProfile` 字段：
 
 - `name`
 - `client_type`
@@ -275,19 +275,19 @@ Suggested `ProviderProfile` fields:
 - `top_p`
 - `supports_prompt_cache`
 
-### Config Sources
+### 配置来源
 
-Priority remains:
+优先级保持不变：
 
 ```text
 CLI args > .env WHALE_* variables > legacy environment variables > defaults
 ```
 
-V1 can add optional config files later, but should not require them.
+V1 以后可以增加可选配置文件，但不应强制要求。
 
-### Compatibility
+### 兼容性
 
-The current variables remain valid:
+当前变量仍然有效：
 
 - `WHALE_OPENAI_API_BASE`
 - `WHALE_OPENAI_API_KEY`
@@ -299,13 +299,13 @@ The current variables remain valid:
 - `WHALE_DEEPSEEK_API_KEY`
 - `WHALE_DEEPSEEK_MODEL`
 
-## Worker Management
+## Worker 管理
 
-V1 should formalize `delegate` as worker management. It should not introduce true parallel execution yet.
+V1 应把 `delegate` 正式化为 worker 管理。此阶段不引入真正的并行执行。
 
 ### Worker Model
 
-Suggested `WorkerSpec` fields:
+建议的 `WorkerSpec` 字段：
 
 - `worker_id`
 - `parent_run_id`
@@ -317,60 +317,60 @@ Suggested `WorkerSpec` fields:
 - `max_depth`
 - `workspace_root`
 
-### Behavior
+### 行为
 
-Default V1 behavior:
+V1 的默认行为：
 
-- Workers are read-only.
-- Workers inherit provider client and workspace.
-- Workers share run store but have their own task/run state.
-- Worker depth remains bounded.
-- Worker result returns as text to the parent.
+- Worker 是只读的。
+- Worker 继承 provider client 和 workspace。
+- Worker 共享 run store，但有自己的 task/run state。
+- Worker depth 保持有界。
+- Worker 结果以文本形式返回给父级。
 
-### Trace Integration
+### Trace 集成
 
-Parent traces should record:
+父级 trace 应记录：
 
 - `worker_started`
 - `worker_finished`
-- Worker run id.
-- Worker status.
-- Clipped worker final answer.
+- Worker run id。
+- Worker 状态。
+- 裁剪后的 worker 最终回答。
 
-Worker traces remain in their own run directory.
+Worker traces 保持在自己的 run 目录中。
 
-## Memory Mechanism
+## Memory 机制
 
-The existing `LayeredMemory` model is preserved and made explicit.
+现有的 `LayeredMemory` 模型将被保留并显式化。
 
-### Layers
+### 层级
 
-- Working memory: current task summary and recent files.
-- File summaries: short summaries keyed by canonical workspace path and freshness hash.
-- Episodic notes: short notes from recent interactions.
-- Durable memory: topic files under `.whale/memory/topics/`.
+- Working memory：当前任务摘要和最近使用的文件。
+- File summaries：按规范化工作区路径和 freshness hash 键控的短摘要。
+- Episodic notes：来自最近交互的短笔记。
+- Durable memory：`.whale/memory/topics/` 下的主题文件。
 
 ### Policy
 
-Suggested `MemoryPolicy` fields:
+建议的 `MemoryPolicy` 字段：
 
-- Working file limit.
-- Episodic note limit.
-- File summary limit.
-- Relevant memory retrieval limit.
-- Durable topic allowlist.
-- Promotion patterns.
-- Rejection rules.
-- Freshness invalidation enabled.
+- Working file limit。
+- Episodic note limit。
+- File summary limit。
+- Relevant memory retrieval limit。
+- Durable topic allowlist。
+- Promotion patterns。
+- Rejection rules。
+- 是否启用 freshness invalidation。
 
 ### Promotion
 
-V1 keeps explicit durable promotion intent:
+V1 保持显式的 durable promotion intent：
 
-- English intent: capture, remember, save, store, persist, note.
-- Chinese intent: 记住, 保存, 记录, 沉淀, 长期记忆, 持久记忆.
+- 英文 intent：capture、remember、save、store、persist、note。
+- 中文 intent：记住、保存、记录、沉淀、长期记忆、持久记忆。
 
-Promotion still requires structured final-answer lines such as:
+Promotion 仍然要求结构化 final-answer 行，例如：
 
 ```text
 Project convention: ...
@@ -379,18 +379,18 @@ Dependency: ...
 Preference: ...
 ```
 
-### Safety
+### 安全
 
-Durable memory should reject:
+Durable memory 应拒绝：
 
-- Secret-shaped text.
-- Transient task state.
-- Long noisy stdout/stderr/traceback content.
-- Redacted values.
+- Secret-shaped 文本。
+- 短期任务状态。
+- 冗长且噪声很大的 stdout/stderr/traceback 内容。
+- 已脱敏的值。
 
-## Proposed Public Interfaces
+## 建议的公共接口
 
-These names are design targets for V1 implementation. They do not need to be public imports immediately.
+这些名称是 V1 实现目标，不需要立即成为 public imports。
 
 ```python
 class WhaleConfig:
@@ -450,61 +450,60 @@ class MemoryPolicy:
     relevant_memory_limit: int
 ```
 
-## Implementation Phases
+## 实现阶段
 
 ### Phase 1: Contracts And Documentation
 
-- Add this platform design.
-- Add schema notes to run/session docs.
-- Keep behavior unchanged.
+- 添加这份平台设计文档。
+- 为 run/session 文档补充 schema 说明。
+- 保持行为不变。
 
 ### Phase 2: Configuration Objects
 
-- Introduce internal config dataclasses.
-- Convert constructor constants into config defaults.
-- Preserve all current CLI arguments.
+- 引入内部 config dataclass。
+- 把构造器常量改成配置默认值。
+- 保留所有当前 CLI 参数。
 
 ### Phase 3: Skill Discovery
 
-- Add skill loader and deterministic selector.
-- Inject selected skill text into prompt metadata and prefix.
-- Add tests for discovery, selection, clipping, and trace metadata.
+- 添加 skill loader 和确定性 selector。
+- 把选中的 skill 文本注入 prompt 元数据和 prefix。
+- 为 discovery、selection、clipping 和 trace 元数据添加测试。
 
 ### Phase 4: Tool Policy Layer
 
-- Extract approval/risk decisions from `run_tool()`.
-- Add `tool_policy_evaluated` trace events.
-- Keep existing tool execution results unchanged.
+- 把 `run_tool()` 中的审批/risk 决策抽离出来。
+- 添加 `tool_policy_evaluated` trace 事件。
+- 保持现有工具执行结果不变。
 
 ### Phase 5: Worker Manager
 
-- Wrap `delegate` in worker manager functions.
-- Add parent/child run linkage.
-- Add worker trace summary events.
+- 用 worker manager 函数包装 `delegate`。
+- 添加父子 run 关联。
+- 添加 worker trace 汇总事件。
 
 ### Phase 6: Run Query And Reports
 
-- Add read-only helpers to list runs and load run summaries.
-- Extend reports with provider, skills, worker, and memory summaries.
+- 添加只读辅助方法以列出 runs 并加载 run 摘要。
+- 扩展报告，加入 provider、skills、worker 和 memory 摘要。
 
-## Acceptance Criteria
+## 验收标准
 
-- Existing tests keep passing.
-- `whale --help` remains valid.
-- Existing `.env.example` remains valid.
-- Existing `.whale/runs/<run_id>/task_state.json`, `trace.jsonl`, and `report.json` remain readable.
-- Skills cannot execute code in V1.
-- Workers are read-only by default.
-- Tool policy decisions are traceable.
-- Provider selection is visible in trace/report metadata.
-- Memory promotion remains explicit and rejects secret-shaped content.
+- 现有测试继续通过。
+- `whale --help` 仍然有效。
+- 现有 `.env.example` 仍然有效。
+- 现有 `.whale/runs/<run_id>/task_state.json`、`trace.jsonl` 和 `report.json` 仍然可读。
+- V1 中 skill 不能执行代码。
+- Worker 默认只读。
+- 工具 policy 决策可追踪。
+- provider 选择在 trace/report 元数据中可见。
+- memory promotion 仍然是显式的，并且会拒绝 secret-shaped 内容。
 
-## Non-Goals For V1
+## V1 非目标
 
-- True parallel worker execution.
-- Remote skill marketplaces.
-- Executable plugins.
-- Database-backed run storage.
-- Breaking changes to CLI flags.
-- Migration requirement for existing `.whale/` state.
-
+- 真正的并行 worker 执行。
+- 远程 skill 市场。
+- 可执行插件。
+- 基于数据库的 run 存储。
+- CLI flag 的破坏性变更。
+- 现有 `.whale/` 状态的迁移要求。

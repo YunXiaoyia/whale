@@ -52,7 +52,7 @@ logs/
 artifacts/
 readme_intro_locked/
 docs/metrics/
-
+docs/architecture
 # Local Git metadata workaround
 .git-data/
 
